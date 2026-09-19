@@ -156,35 +156,17 @@ jobs:
       - name: Prepare Android signing
         id: signing
         shell: bash
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.KEYSTORE }}
-          ANDROID_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          ANDROID_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "KEYSTORE secret is missing; using the Android debug key for a test build."
-            echo "mode=debug" >> "$GITHUB_OUTPUT"
-            cat > android/local.properties <<EOF
-            sdk.dir=$ANDROID_HOME
-            EOF
-            sed -i 's/^[[:space:]]*//' android/local.properties
-            exit 0
-          fi
-
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/keystore.jks
-
+          # The first public build is intentionally test-signed. This keeps
+          # the workflow runnable without placing a private release keystore
+          # in the repository. Production signing can be enabled later by
+          # restoring the four repository secrets.
+          echo "mode=debug" >> "$GITHUB_OUTPUT"
           cat > android/local.properties <<EOF
           sdk.dir=$ANDROID_HOME
-          storeFile=keystore.jks
-          storePassword=$ANDROID_STORE_PASSWORD
-          keyAlias=$ANDROID_KEY_ALIAS
-          keyPassword=$ANDROID_KEY_PASSWORD
           EOF
           sed -i 's/^[[:space:]]*//' android/local.properties
-
-          echo "mode=release" >> "$GITHUB_OUTPUT"
-          echo "Android signing files prepared."
+          echo "Android debug signing prepared."
 
       - name: Install dependencies
         run: flutter pub get
