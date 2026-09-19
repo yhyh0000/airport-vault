@@ -172,7 +172,11 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        # vendor/yucon is retained as a separately licensed reference app.
+        # Its tests belong to Yucon's own package (vault), not this SlClash
+        # application, so analyzing the whole repository would report false
+        # failures from that unmerged test suite.
+        run: flutter analyze --no-fatal-infos lib test
 
       - name: Enforce typography source contract
         run: flutter test test/theme/typography/typography_source_contract_test.dart

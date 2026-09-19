@@ -188,7 +188,9 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        # Keep the separately licensed Yucon reference app outside this
+        # project's analyzer scope; its tests target Yucon's own package.
+        run: flutter analyze --no-fatal-infos lib test
 
       - name: Enforce typography source contract
         run: flutter test test/theme/typography/typography_source_contract_test.dart
