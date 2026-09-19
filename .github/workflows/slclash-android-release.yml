@@ -231,11 +231,14 @@ jobs:
             echo "No Mihomo release tag found; using $MIHOMO_VERSION."
           fi
 
-          MIHOMO_TAG="$MIHOMO_VERSION"
-          if ! [[ "$MIHOMO_TAG" =~ ^v ]]; then
-            MIHOMO_TAG="v$MIHOMO_TAG"
+          MIHOMO_RELEASE_DATE=""
+          if [[ "$MIHOMO_VERSION" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            MIHOMO_TAG="$MIHOMO_VERSION"
+            if ! [[ "$MIHOMO_TAG" =~ ^v ]]; then
+              MIHOMO_TAG="v$MIHOMO_TAG"
+            fi
+            MIHOMO_RELEASE_DATE="$(gh api "repos/MetaCubeX/mihomo/releases/tags/$MIHOMO_TAG" --jq '.published_at' 2>/dev/null || true)"
           fi
-          MIHOMO_RELEASE_DATE="$(gh api "repos/MetaCubeX/mihomo/releases/tags/$MIHOMO_TAG" --jq '.published_at' 2>/dev/null || true)"
           if [ -z "$MIHOMO_RELEASE_DATE" ]; then
             MIHOMO_RELEASE_DATE="$CORE_BUILD_TIME"
           fi
