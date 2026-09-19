@@ -15,7 +15,7 @@ void main() {
     mode = 'ikun';
     requests.clear();
     server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    baseUrl = 'http://localhost:${server.port}';
+    baseUrl = 'http://127.0.0.1:${server.port}';
     server.listen((request) async {
       final body = await utf8.decoder.bind(request).join();
       requests['${request.method} ${request.uri.path}'] = body;
