@@ -1,7 +1,9 @@
 # Mihomo patches
 
-`proxy-only-traffic.patch` preserves SlClash's proxy-only upload/download
-counters on top of an official Mihomo release.
+`proxy-only-traffic.patch` exposes SlClash's proxy-only upload/download
+counters through the small bridge API expected by this repository. The current
+FlClash Mihomo fork already maintains the proxy counters internally; the patch
+only adds the `ProxyNow` and `ProxyTotal` accessors.
 
 The Android build applies this patch automatically. The scheduled Mihomo
 update workflow also applies and validates it before pushing an update branch.
