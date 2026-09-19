@@ -10,9 +10,9 @@
 
 ## GitHub 构建
 
-将仓库推送到自己的 GitHub 后，在 **Actions → 机场钥仓 Android Release → Run workflow** 输入版本号（例如 `0.1.0`），构建完成后 APK 会出现在对应的 GitHub Release 资产中，文件名形如 `AirportVault-v0.1.0-arm64-v8a.apk`。未配置签名密钥时，工作流会使用 Android debug key 生成测试包；正式分发前应配置 `KEYSTORE`、`KEY_ALIAS`、`STORE_PASSWORD` 和 `KEY_PASSWORD` 四个 Actions secrets。
+将仓库推送到自己的 GitHub 后，在 **Actions → 机场钥仓 Android Release → Run workflow** 输入版本号（例如 `0.1.0`），构建完成后会同时生成真机用的 `arm64-v8a` 和雷电模拟器用的 `x86_64` APK，并出现在对应的 GitHub Release 资产中。未配置签名密钥时，工作流会使用 Android debug key 生成测试包；正式分发前应配置 `KEYSTORE`、`KEY_ALIAS`、`STORE_PASSWORD` 和 `KEY_PASSWORD` 四个 Actions secrets。
 
-它只做 Android，只维护 `arm64-v8a`。我们不想再做一个仅仅“能把 Mihomo 跑起来”的外壳，而是希望维护一款自己愿意长期依赖、持续审视细节，并认真对待性能、功耗和交互体验的移动端客户端。
+它只做 Android，维护 `arm64-v8a` 真机和 `x86_64` 模拟器目标。我们不想再做一个仅仅“能把 Mihomo 跑起来”的外壳，而是希望维护一款自己愿意长期依赖、持续审视细节，并认真对待性能、功耗和交互体验的移动端客户端。
 
 ## 我们围绕 Mihomo 做什么
 
@@ -24,7 +24,7 @@ Mihomo 的配置、Provider、策略组、规则和运行时状态，既是能�
 
 - Mihomo 负责代理内核、规则引擎与配置语义；SlClash 负责 Android 上的可靠承载、移动交互、生命周期、性能、订阅工作流和可观察性。
 - 完整承载 Mihomo 语义是长期方向。我们会努力提高覆盖度，但不会用“天然、即时 100% 支持未来所有功能”这样的口号替代验证和维护。
-- 项目只维护 Android 与 `arm64-v8a`，不重新建设桌面端、系统托盘、桌面热键、桌面系统代理或发行版包装。真实的跨平台需求，则通过与成熟桌面客户端兼容的数据迁移能力来解决。
+- 项目只维护 Android 的 `arm64-v8a` 真机与 `x86_64` 模拟器目标，不重新建设桌面端、系统托盘、桌面热键、桌面系统代理或发行版包装。真实的跨平台需求，则通过与成熟桌面客户端兼容的数据迁移能力来解决。
 - 统一订阅中心属于订阅整理、迁移和恢复能力，不改变也不替代 Mihomo 的内核语义。
 
 ## 维护与反馈
@@ -99,7 +99,7 @@ FlClash 为项目提供了优秀的跨平台与 Material You 基础；SlClash �
 
 SlClash 做过的大量优化，并不是一句笼统的“轻量化”口号，而是对平台范围、刷新调度、缓存边界、页面重建、网络切换和 VPN 生命周期逐项收紧：
 
-- **平台裁剪：** 只保留 Android 与 `arm64-v8a`，移除桌面平台、系统托盘、桌面热键、桌面系统代理、Rust IPC 和发行版包装等无关链路，减少构建体积与运行复杂度。
+- **平台裁剪：** 只保留 Android 的 `arm64-v8a` 与 `x86_64`，移除桌面平台、系统托盘、桌面热键、桌面系统代理、Rust IPC 和发行版包装等无关链路，减少构建体积与运行复杂度。
 - **按页面和生命周期调度：** 首页流量探测仅在服务运行、页面可见且应用处于前台时工作；日志和请求采用推送与批量刷新，高频数据使用固定长度缓存、节流和防抖，避免后台空转和全局 UI 连续重建。
 - **空闲启动更克制：** 服务未运行时，冷启动不再为了界面展示提前拉起远程核心进程。Phase 4 的一台实测设备上，这条路径避免了约 45 MB 的远程进程 PSS；这是特定设备基线，不包装成所有设备都相同的宣传数字。
 - **重建范围可控：** 高频运行状态被隔离到真正依赖它的组件；无收益的周期刷新已移除。项目使用真实 `FrameTiming` 审计页面流畅度，也不会为了表面上的切页速度，无条件让所有离屏页面常驻内存。
@@ -131,10 +131,10 @@ GPT、YouTube 和健康检测是三个独立模式。打开页面不会自动发
 
 正式版和测试版安装包见 [GitHub Releases](https://github.com/songzhengpei/Slclash/releases)。
 
-本项目仅支持 Android `arm64-v8a`。自行构建前请阅读仓库内的 [`AGENTS.md`](AGENTS.md)；README 不展开个人开发环境中的 SDK 路径。
+本项目支持 Android `arm64-v8a` 与 `x86_64`。自行构建前请阅读仓库内的 [`AGENTS.md`](AGENTS.md)；README 不展开个人开发环境中的 SDK 路径。
 
 ## 致谢
 
 SlClash 建立在 [FlClash](https://github.com/chen08209/FlClash) 的跨平台、Material You 项目基础，以及 [Mihomo](https://github.com/MetaCubeX/mihomo) / Clash.Meta 生态之上。
 
-感谢原项目作者和社区长期提供的内核、客户端基础与公开讨论。FlClash 选择服务多平台，SlClash 选择把 Android 与 `arm64-v8a` 做深；这不是对原项目的否定，而是在同一基础上针对不同使用场景做出的取舍。
+感谢原项目作者和社区长期提供的内核、客户端基础与公开讨论。FlClash 选择服务多平台，机场钥仓选择把 Android 真机与模拟器体验做深；这不是对原项目的否定，而是在同一基础上针对不同使用场景做出的取舍。

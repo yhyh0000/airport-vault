@@ -20,16 +20,25 @@ class Target {
     flutterPlatform: 'android-arm64',
   );
 
-  static final List<Target> all = [androidArm64];
+  // LDPlayer and several other Android emulators expose x86_64. Keep the
+  // native Mihomo core in sync with the Flutter APK so emulator builds do not
+  // install successfully only to fail when the VPN service starts.
+  static const androidX64 = Target(
+    goos: 'android',
+    goarch: 'amd64',
+    abi: 'x86_64',
+    flutterPlatform: 'android-x64',
+  );
+
+  static const List<Target> all = [androidArm64, androidX64];
 
   static List<Target> forPlatform(String platformName) {
     return all.where((t) => t.goos == platformName).toList();
   }
 
-  // Flutter 3.44+ passes android-arm / android-x64, but we only ship arm64.
+  // Flutter 3.44+ passes android-arm / android-x64.
   static const _platformAliases = <String, String>{
     'android-arm': 'android-arm64',
-    'android-x64': 'android-arm64',
   };
 
   static List<Target> resolveAndroidTargets({
@@ -82,6 +91,8 @@ class Target {
     switch (abi) {
       case 'arm64-v8a':
         return 'aarch64-linux-android21-clang';
+      case 'x86_64':
+        return 'x86_64-linux-android21-clang';
       default:
         throw Exception('Unknown ABI: $abi');
     }

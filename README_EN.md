@@ -6,7 +6,7 @@
 
 SlClash is an Android proxy client built by continuously trimming, restructuring, and redesigning [FlClash](https://github.com/chen08209/FlClash) around the [Mihomo](https://github.com/MetaCubeX/mihomo) core.
 
-It supports Android only and ships exclusively for `arm64-v8a`. The goal is not another shell that merely manages to launch Mihomo. We want a mobile client we are willing to depend on for years—one that keeps questioning its details and treats performance, power use, and interaction quality as product work.
+It supports Android and ships for both physical-device `arm64-v8a` and emulator `x86_64` targets. The goal is not another shell that merely manages to launch Mihomo. We want a mobile client we are willing to depend on for years—one that keeps questioning its details and treats performance, power use, and interaction quality as product work.
 
 ## Our mission around Mihomo
 
@@ -18,7 +18,7 @@ That mission also defines the project's boundaries:
 
 - Mihomo owns proxy execution, the rule engine, and configuration semantics. SlClash owns their reliable Android integration, mobile interaction, lifecycle, performance, subscription workflows, and observability.
 - Faithfully carrying Mihomo semantics is the long-term direction. We will keep expanding coverage, but we will not replace verification and maintenance with a claim that every future feature is automatically supported in full on day one.
-- The project supports only Android and `arm64-v8a`. It will not rebuild desktop platforms, tray integration, desktop hotkeys, desktop system proxy, or distribution packaging. Real cross-platform needs are addressed through data portability with mature desktop clients.
+- The project supports Android `arm64-v8a` and `x86_64` targets. It will not rebuild desktop platforms, tray integration, desktop hotkeys, desktop system proxy, or distribution packaging. Real cross-platform needs are addressed through data portability with mature desktop clients.
 - The Unified Subscription Center organizes, migrates, and restores subscriptions. It neither changes nor replaces Mihomo's core semantics.
 
 ## Maintenance and feedback
@@ -93,7 +93,7 @@ Light, dark, pure-black, dynamic, and custom themes are more than color inversio
 
 The performance work in SlClash is not a vague claim of being “lightweight.” Platform scope, refresh scheduling, cache bounds, rebuild scope, network transitions, and the VPN lifecycle have each been tightened deliberately:
 
-- **Platform pruning:** Only Android and `arm64-v8a` remain. Desktop platforms, tray integration, desktop hotkeys and system proxy, Rust IPC, and distribution packaging paths have been removed, reducing build surface and runtime complexity.
+- **Platform pruning:** Only Android `arm64-v8a` and `x86_64` remain. Desktop platforms, tray integration, desktop hotkeys and system proxy, Rust IPC, and distribution packaging paths have been removed, reducing build surface and runtime complexity.
 - **Page- and lifecycle-aware scheduling:** Dashboard traffic probes run only while the service is active, the page is visible, and the app is in the foreground. Logs and requests use push delivery with batched presentation; high-frequency data uses bounded caches, throttling, and debouncing instead of driving continuous global UI rebuilds.
 - **A quieter idle startup:** When the service is stopped, a cold UI launch no longer starts the remote core process in advance. On one device used for the Phase 4 baseline, this path avoided roughly 45 MB of remote-process PSS. It is reported as a device-specific measurement, not a promise that every device will produce the same number.
 - **Controlled rebuild scope:** High-frequency runtime state is isolated to components that consume it, and no-op periodic refreshes have been removed. Real `FrameTiming` data is used for UI audits, and off-screen pages are not kept alive indiscriminately just to manufacture a faster-looking transition at the cost of memory and state lifetime.
@@ -125,10 +125,10 @@ More capabilities are in development, but every addition must first answer two q
 
 Production and beta packages are available from [GitHub Releases](https://github.com/songzhengpei/Slclash/releases).
 
-Only Android `arm64-v8a` is supported. Before building locally, read [`AGENTS.md`](AGENTS.md); personal SDK paths are intentionally kept out of this README.
+Android `arm64-v8a` and `x86_64` are supported. Before building locally, read [`AGENTS.md`](AGENTS.md); personal SDK paths are intentionally kept out of this README.
 
 ## Acknowledgements
 
 SlClash is built on [FlClash](https://github.com/chen08209/FlClash)'s cross-platform, Material You foundation and the [Mihomo](https://github.com/MetaCubeX/mihomo) / Clash.Meta ecosystem.
 
-Thank you to the original authors and communities for the core, the client foundation, and the open technical discussions. FlClash serves multiple platforms; SlClash chooses to go deeper on Android and `arm64-v8a`. That is not a rejection of the original project, but a different tradeoff for a different long-term workflow.
+Thank you to the original authors and communities for the core, the client foundation, and the open technical discussions. FlClash serves multiple platforms; Airport Vault chooses to go deeper on Android devices and emulators. That is not a rejection of the original project, but a different tradeoff for a different long-term workflow.

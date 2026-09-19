@@ -17,9 +17,7 @@ android {
     defaultConfig {
         minSdk = libs.versions.minSdk.get().toInt()
         if (!skipAbiFilters) {
-            ndk {
-                abiFilters += listOf("arm64-v8a")
-            }
+            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
         }
     }
 

@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   build-release:
-    name: Build Android arm64-v8a APK
+    name: Build Android arm64-v8a and x86_64 APKs
     runs-on: ubuntu-latest
 
     steps:
@@ -77,6 +77,7 @@ jobs:
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "apk_name=AirportVault-${TAG_NAME}-arm64-v8a.apk" >> "$GITHUB_OUTPUT"
+          echo "apk_name_x64=AirportVault-${TAG_NAME}-x86_64.apk" >> "$GITHUB_OUTPUT"
 
       - name: Validate manual release tag
         if: github.event_name == 'workflow_dispatch'
@@ -196,6 +197,7 @@ jobs:
           PROJECT_DIR: ${{ github.workspace }}
         run: |
           bash plugins/setup/buildkit/run_build_tool.sh android --arch arm64
+          bash plugins/setup/buildkit/run_build_tool.sh android --arch amd64
 
       - name: Resolve core metadata
         id: core
@@ -251,12 +253,12 @@ jobs:
         run: |
           TAG_NAME="${{ steps.vars.outputs.tag_name }}"
           PREVIOUS_TAG="$(git tag --sort=-v:refname | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' | grep -v "^${TAG_NAME}$" | head -n 1 || true)"
-          RELEASE_REASON="Android arm64-v8a release build."
+          RELEASE_REASON="Android arm64-v8a and x86_64 release builds."
 
           if [ -n "$PREVIOUS_TAG" ]; then
             CHANGED_FILES="$(git diff --name-only "$PREVIOUS_TAG"..HEAD)"
             if echo "$CHANGED_FILES" | grep -Eq '^(core/Clash\.Meta|\.gitmodules)$'; then
-              RELEASE_REASON="本次发布由 Mihomo core 升级触发，已重新构建 Android arm64-v8a APK。"
+              RELEASE_REASON="本次发布由 Mihomo core 升级触发，已重新构建 Android arm64-v8a 与 x86_64 APK。"
             fi
           fi
 
@@ -289,7 +291,7 @@ jobs:
         env:
           SLCLASH_SKIP_GO_CORE_BUILD: "true"
         run: |
-          flutter build apk --release --split-per-abi --target-platform android-arm64 \
+          flutter build apk --release --split-per-abi --target-platform android-arm64,android-x64 \
             --android-project-arg=slclashSkipAbiFilters=true \
             --android-project-arg=slclashSkipGoCoreBuild=true \
             --build-name "${{ steps.vars.outputs.version_name }}" \
@@ -302,27 +304,30 @@ jobs:
             --dart-define=MIHOMO_RELEASE_DATE="${{ steps.core.outputs.mihomo_release_date }}" \
             --dart-define=CORE_BUILD_TIME="${{ steps.core.outputs.core_build_time }}"
 
-      - name: Rename arm64 APK
+      - name: Rename APKs
         shell: bash
         run: |
-          SRC="build/app/outputs/flutter-apk/app-arm64-v8a-release.apk"
-          DEST="${{ steps.vars.outputs.apk_name }}"
-
-          if [ ! -f "$SRC" ]; then
-            echo "Expected APK not found: $SRC"
-            echo "Available files:"
-            find build/app/outputs -type f || true
-            exit 1
-          fi
-
-          cp "$SRC" "$DEST"
-          ls -lh "$DEST"
+          set -euo pipefail
+          declare -A APKS=(
+            ["app-arm64-v8a-release.apk"]="${{ steps.vars.outputs.apk_name }}"
+            ["app-x86_64-release.apk"]="${{ steps.vars.outputs.apk_name_x64 }}"
+          )
+          for source in "${!APKS[@]}"; do
+            src="build/app/outputs/flutter-apk/$source"
+            dest="${APKS[$source]}"
+            if [ ! -f "$src" ]; then
+              echo "Expected APK not found: $src"
+              find build/app/outputs -type f || true
+              exit 1
+            fi
+            cp "$src" "$dest"
+            ls -lh "$dest"
+          done
 
       - name: Verify APK manifest
         shell: bash
         run: |
           set -euo pipefail
-          APK="${{ steps.vars.outputs.apk_name }}"
           echo "=== APK Manifest Verification ==="
 
           # Locate aapt2 from Android SDK build-tools
@@ -332,32 +337,28 @@ jobs:
             exit 1
           fi
 
-          # 1. Verify packageName
-          PACKAGE="$($AAPT2 dump packagename "$APK")"
           EXPECTED_PACKAGE="com.slclash.app"
           if [ "${{ steps.signing.outputs.mode }}" = "debug" ]; then
             EXPECTED_PACKAGE="com.slclash.app.dev"
           fi
-          echo "packageName: $PACKAGE"
-          if [ "$PACKAGE" != "$EXPECTED_PACKAGE" ]; then
-            echo "FAIL: packageName mismatch (expected $EXPECTED_PACKAGE)"
-            exit 1
-          fi
-          echo "PASS: packageName OK"
-
-          # 2. Verify versionCode > pubspec current build number
           PUBSPEC_BUILD="$(grep '^version: ' pubspec.yaml | sed 's/.*+//')"
-          VERSION_CODE="$($AAPT2 dump badging "$APK" 2>/dev/null | grep -o "versionCode='[0-9]*'" | cut -d"'" -f2)"
-          echo "versionCode: $VERSION_CODE (pubspec build: $PUBSPEC_BUILD)"
-          if [ -z "$VERSION_CODE" ] || [ "$VERSION_CODE" -le "$PUBSPEC_BUILD" ]; then
-            echo "FAIL: versionCode ($VERSION_CODE) not higher than pubspec build number ($PUBSPEC_BUILD)"
-            exit 1
-          fi
-          echo "PASS: versionCode incremented"
-
-          # 3. Verify release signature
-          jarsigner -verify -certs "$APK" 2>&1 | head -5
-          echo "PASS: APK signature verified"
+          for APK in "${{ steps.vars.outputs.apk_name }}" "${{ steps.vars.outputs.apk_name_x64 }}"; do
+            echo "--- $APK ---"
+            PACKAGE="$($AAPT2 dump packagename "$APK")"
+            echo "packageName: $PACKAGE"
+            if [ "$PACKAGE" != "$EXPECTED_PACKAGE" ]; then
+              echo "FAIL: packageName mismatch (expected $EXPECTED_PACKAGE)"
+              exit 1
+            fi
+            VERSION_CODE="$($AAPT2 dump badging "$APK" 2>/dev/null | grep -o "versionCode='[0-9]*'" | cut -d"'" -f2)"
+            echo "versionCode: $VERSION_CODE (pubspec build: $PUBSPEC_BUILD)"
+            if [ -z "$VERSION_CODE" ] || [ "$VERSION_CODE" -le "$PUBSPEC_BUILD" ]; then
+              echo "FAIL: versionCode is not newer than pubspec build number"
+              exit 1
+            fi
+            jarsigner -verify -certs "$APK" 2>&1 | head -5
+          done
+          echo "PASS: both APKs passed manifest and signature checks"
 
           echo "=== All manifest checks passed ==="
 
@@ -365,8 +366,10 @@ jobs:
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.vars.outputs.apk_name }}
-          path: ${{ steps.vars.outputs.apk_name }}
+          name: AirportVault-${{ steps.vars.outputs.tag_name }}-android-apks
+          path: |
+            ${{ steps.vars.outputs.apk_name }}
+            ${{ steps.vars.outputs.apk_name_x64 }}
 
       - name: Publish GitHub Release
         shell: bash
@@ -374,7 +377,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG_NAME="${{ steps.vars.outputs.tag_name }}"
-          APK_NAME="${{ steps.vars.outputs.apk_name }}"
+          APK_NAME_ARM64="${{ steps.vars.outputs.apk_name }}"
+          APK_NAME_X64="${{ steps.vars.outputs.apk_name_x64 }}"
 
           if gh release view "$TAG_NAME" >/dev/null 2>&1; then
             echo "Release $TAG_NAME already exists. Refusing to overwrite existing release."
@@ -382,6 +386,6 @@ jobs:
           fi
 
           echo "Creating release $TAG_NAME..."
-          gh release create "$TAG_NAME" "$APK_NAME" \
+          gh release create "$TAG_NAME" "$APK_NAME_ARM64" "$APK_NAME_X64" \
             --title "机场钥仓 ${{ steps.vars.outputs.version_name }}" \
             --notes-file "${{ steps.notes.outputs.file }}"

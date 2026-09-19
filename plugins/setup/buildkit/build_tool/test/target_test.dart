@@ -18,6 +18,14 @@ void main() {
       expect(targets, [Target.androidArm64]);
     });
 
+    test('maps the x86_64 Flutter target used by Android emulators', () {
+      final targets = Target.resolveAndroidTargets(
+        flutterTargetPlatforms: 'android-x64',
+      );
+
+      expect(targets, [Target.androidX64]);
+    });
+
     test('uses explicit arch when provided', () {
       final targets = Target.resolveAndroidTargets(archName: 'arm64');
 

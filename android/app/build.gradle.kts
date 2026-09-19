@@ -49,7 +49,7 @@ android {
         versionName = flutter.versionName
         if (!skipAbiFilters) {
             ndk {
-                abiFilters += listOf("arm64-v8a")
+                abiFilters += listOf("arm64-v8a", "x86_64")
             }
         }
     }
@@ -70,12 +70,11 @@ android {
             useLegacyPackaging = true
             if (!skipAbiFilters) {
                 // Some transitive AARs bundle every ABI and are not pruned by
-                // ndk.abiFilters on recent AGP versions. Keep the shipped APK
-                // aligned with this Android arm64-only fork.
+                // ndk.abiFilters on recent AGP versions. Keep shipped APKs
+                // aligned with the supported arm64 and x86_64 targets.
                 excludes += setOf(
                     "**/armeabi-v7a/*.so",
                     "**/x86/*.so",
-                    "**/x86_64/*.so",
                 )
             }
         }
