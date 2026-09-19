@@ -52,10 +52,11 @@ class AirportAccountsState {
   }
 }
 
-class AirportAccountsNotifier extends StateNotifier<AirportAccountsState> {
-  AirportAccountsNotifier()
-      : super(const AirportAccountsState()) {
+class AirportAccountsNotifier extends Notifier<AirportAccountsState> {
+  @override
+  AirportAccountsState build() {
     unawaited(_load());
+    return const AirportAccountsState();
   }
 
   final AirportSessionStore _store = const AirportSessionStore();
@@ -141,5 +142,5 @@ class AirportAccountsNotifier extends StateNotifier<AirportAccountsState> {
   }
 }
 
-final airportAccountsProvider = StateNotifierProvider<AirportAccountsNotifier,
-    AirportAccountsState>((ref) => AirportAccountsNotifier());
+final airportAccountsProvider = NotifierProvider<AirportAccountsNotifier,
+    AirportAccountsState>(AirportAccountsNotifier.new);
