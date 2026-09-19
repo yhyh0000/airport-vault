@@ -409,7 +409,10 @@ class AirportService {
 
   String? _findSubscriptionUrl(String html, String baseUrl) {
     final patterns = [
-      RegExp(r'''href=["']([^"']+)["'][^>]{0,240}(?:订阅|subscription|clash|sing-box)''', caseSensitive: false),
+      RegExp(
+        r'''href=["']([^"']+)["'][^>]{0,240}>[\s\S]{0,240}?(?:订阅|subscription|clash|sing-box)''',
+        caseSensitive: false,
+      ),
       RegExp(r'''(?:订阅地址|订阅链接|subscription)[^a-z0-9]{0,40}(https?://[^\s"'<>]+)''', caseSensitive: false),
     ];
     final value = _firstMatch(html, patterns);
