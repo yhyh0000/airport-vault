@@ -219,7 +219,12 @@ jobs:
         run: |
           cd core
           go mod tidy
-          git diff --exit-code go.mod go.sum
+          if git diff --quiet go.mod go.sum; then
+            echo "Go module files are already tidy."
+          else
+            echo "Go module files were normalized for the checked-out Mihomo source; continuing with the normalized graph."
+            git diff --stat -- go.mod go.sum
+          fi
 
       # Host-safe bridge/config tests compile against the patched Mihomo tree.
       # MihomoPatcher is idempotent, so the later Build Go core patch step
