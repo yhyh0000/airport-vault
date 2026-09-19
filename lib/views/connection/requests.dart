@@ -1,0 +1,218 @@
+import 'dart:async';
+
+import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/core/controller.dart';
+import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:super_sliver_list/super_sliver_list.dart';
+
+import 'item.dart';
+
+class RequestsView extends ConsumerStatefulWidget {
+  const RequestsView({super.key});
+
+  @override
+  ConsumerState<RequestsView> createState() => _RequestsViewState();
+}
+
+class _RequestsViewState extends ConsumerState<RequestsView> {
+  static const _surfaceBottomPadding = 8.0;
+  static const _fabListEndPadding = 88.0;
+
+  final _requestsStateNotifier = ValueNotifier<TrackerInfosState>(
+    const TrackerInfosState(),
+  );
+  List<TrackerInfo> _requests = [];
+  late final ScrollController _scrollController;
+
+  void _onSearch(String value) {
+    _requestsStateNotifier.value = _requestsStateNotifier.value.copyWith(
+      query: value,
+    );
+  }
+
+  void _onKeywordsUpdate(List<String> keywords) {
+    _requestsStateNotifier.value = _requestsStateNotifier.value.copyWith(
+      keywords: keywords,
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _requests = ref.read(requestsProvider).list;
+    _scrollController = ScrollController();
+    _requestsStateNotifier.value = _requestsStateNotifier.value.copyWith(
+      trackerInfos: _requests,
+    );
+    ref.listenManual(requestsProvider.select((state) => VM(state.list)), (
+      prev,
+      next,
+    ) {
+      _requests = next.a;
+      updateRequestsThrottler();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        unawaited(_primeRuntimeRequests());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _requestsStateNotifier.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void updateRequestsThrottler() {
+    throttler.call(FunctionTag.requests, () {
+      if (!mounted) {
+        return;
+      }
+      final isEquality = trackerInfoListEquality.equals(
+        _requests,
+        _requestsStateNotifier.value.trackerInfos,
+      );
+      if (isEquality) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _requestsStateNotifier.value = _requestsStateNotifier.value.copyWith(
+            trackerInfos: _requests,
+          );
+        }
+      });
+    }, duration: commonDuration);
+  }
+
+  Future<void> _ensureRuntimeListener() async {
+    if (!ref.read(isStartProvider) || ref.read(suspendProvider)) {
+      return;
+    }
+    try {
+      await coreController.startListener();
+    } catch (e) {
+      commonPrint.log(
+        'start listener for requests failed: $e',
+        logLevel: LogLevel.warning,
+      );
+    }
+  }
+
+  Future<void> _primeRuntimeRequests() async {
+    await _ensureRuntimeListener();
+    if (!mounted || _requests.isNotEmpty || !ref.read(isStartProvider)) {
+      return;
+    }
+    try {
+      final trackerInfos = await coreController.getConnections();
+      if (!mounted || trackerInfos.isEmpty || _requests.isNotEmpty) {
+        return;
+      }
+      _requests = trackerInfos;
+      _requestsStateNotifier.value = _requestsStateNotifier.value.copyWith(
+        trackerInfos: _requests,
+      );
+    } catch (e) {
+      commonPrint.log(
+        'prime runtime requests failed: $e',
+        logLevel: LogLevel.warning,
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appLocalizations = context.appLocalizations;
+    return CommonScaffold(
+      title: appLocalizations.requests,
+      appBarActions: const [],
+      searchState: AppBarSearchState(onSearch: _onSearch),
+      onKeywordsUpdate: _onKeywordsUpdate,
+      floatingActionButton: ValueListenableBuilder(
+        valueListenable: _requestsStateNotifier,
+        builder: (_, state, _) {
+          final autoScrollToEnd = state.autoScrollToEnd;
+          return FadeRotationScaleBox(
+            child: FloatingActionButton(
+              key: ValueKey(autoScrollToEnd),
+              onPressed: () {
+                _requestsStateNotifier.value = _requestsStateNotifier.value
+                    .copyWith(
+                      autoScrollToEnd:
+                          !_requestsStateNotifier.value.autoScrollToEnd,
+                    );
+              },
+              child: autoScrollToEnd
+                  ? const Icon(SurgeIcons.block)
+                  : const Icon(SurgeIcons.verticalAlignTop),
+            ),
+          );
+        },
+      ),
+      body: ValueListenableBuilder<TrackerInfosState>(
+        valueListenable: _requestsStateNotifier,
+        builder: (context, state, _) {
+          final requests = state.list;
+          if (requests.isEmpty) {
+            return NullStatus(
+              label: appLocalizations.nullTip(appLocalizations.requests),
+            );
+          }
+          return Padding(
+            padding: const EdgeInsets.only(
+              left: 16,
+              right: 16,
+              top: 8,
+              bottom: _surfaceBottomPadding,
+            ),
+            child: SoftOsListSurface(
+              child: CommonScrollBar(
+                trackVisibility: false,
+                controller: _scrollController,
+                child: ScrollToEndBox(
+                  controller: _scrollController,
+                  dataSource: requests,
+                  enable: state.autoScrollToEnd,
+                  onCancelToEnd: () {
+                    _requestsStateNotifier.value = _requestsStateNotifier.value
+                        .copyWith(autoScrollToEnd: false);
+                  },
+                  child: SuperListView.builder(
+                    physics: const NextClampingScrollPhysics(),
+                    controller: _scrollController,
+                    itemBuilder: (_, index) {
+                      if (index == requests.length) {
+                        return const SizedBox(height: _fabListEndPadding);
+                      }
+                      final trackerInfo = requests[index];
+                      return TrackerInfoItem(
+                        key: Key(trackerInfo.id),
+                        trackerInfo: trackerInfo,
+                        showDivider: index != requests.length - 1,
+                        onClickKeyword: (value) {
+                          context.commonScaffoldState?.addKeyword(value);
+                        },
+                        detailTitle: appLocalizations.details(
+                          appLocalizations.request,
+                        ),
+                      );
+                    },
+                    itemCount: requests.length + 1,
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}

@@ -1,0 +1,52 @@
+// plugin.gradle — Build Go core as part of the Android Gradle build
+//
+// Apply this from the setup plugin's android/build.gradle:
+//   apply from: "${project.projectDir}/../buildkit/gradle/plugin.gradle"
+//
+// It adds a task that runs build_tool android before mergeNativeLibs.
+
+def buildkitDir = file("${project.projectDir}/../buildkit").absolutePath
+def launcher = "${buildkitDir}/run_build_tool.sh"
+def windowsLauncher = "${buildkitDir}/run_build_tool.cmd"
+def projectRoot = file("${buildkitDir}/../../..").absolutePath
+def androidArch = System.getenv('ANDROID_ARCH')
+def targetPlatform = project.findProperty('target-platform') ?:
+        rootProject.findProperty('target-platform')
+def androidNdk = System.getenv('ANDROID_NDK')
+def skipGoCoreBuild = System.getenv('SLCLASH_SKIP_GO_CORE_BUILD') == 'true' ||
+        project.findProperty('slclashSkipGoCoreBuild') == 'true' ||
+        rootProject.findProperty('slclashSkipGoCoreBuild') == 'true'
+def archArgs = androidArch
+        ? ['--arch', androidArch]
+        : (targetPlatform ? ['--target-platform', targetPlatform.toString()] : ['--arch', 'arm64'])
+
+task buildGoCore(type: Exec) {
+    if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+        workingDir projectRoot
+        commandLine 'cmd', '/c', windowsLauncher, 'android', *archArgs
+    } else {
+        workingDir buildkitDir
+        commandLine 'bash', launcher, 'android', *archArgs
+    }
+
+    environment 'ANDROID_NDK', androidNdk
+    environment 'APP_ENV', project.hasProperty('appEnv') ? project.appEnv : 'pre'
+    environment 'PROJECT_DIR', projectRoot
+}
+
+def goCoreTask = buildGoCore
+
+// Wire into the Android build across all subprojects
+afterEvaluate {
+    if (!skipGoCoreBuild) {
+        rootProject.subprojects { sub ->
+            sub.tasks.matching {
+                it.name.startsWith('configureCMake') ||
+                        it.name.startsWith('externalNativeBuild') ||
+                        it.name.startsWith('mergeNativeLibs')
+            }.configureEach {
+                dependsOn goCoreTask
+            }
+        }
+    }
+}

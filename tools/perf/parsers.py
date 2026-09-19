@@ -1,0 +1,1011 @@
+from __future__ import annotations
+
+import re
+from collections import defaultdict
+
+_KV = re.compile(r"^\s*([A-Za-z][A-Za-z0-9 .]+?):\s*(-?\d+)\s*(?:ms)?\s*$")
+_PHASE4 = re.compile(r"\[PHASE4\] mark=([A-Za-z0-9_.]+) elapsed_ms=(\d+)")
+# `ip -o link show` lines look like: `12: tun0: <POINTOPOINT,...>`
+_TUN_IFACE = re.compile(r"^\d+:\s*(tun\d+)\s*:")
+
+TIMING_MARKS = (
+    "first_frame",
+    "main_ready",
+    "core_ready",
+    "globalState.attach",
+    "proxy_group_snapshot_hydration",
+    "setupAction.initStatus",
+    "initStatus.begin",
+    "updateStartTime",
+    "session_snapshot",
+    "preload",
+    "connectCore",
+    "ensureCoreReady",
+    "initCore",
+    "initCore.groups",
+    "getProfile",
+    "setupConfig",
+    "applyProfile",
+    "applyProfile.groups",
+    "syncProviders",
+    "startListener",
+    "runApp",
+)
+
+CORE_OUTCOME_MARKS = (
+    "core_ready",
+    "core_skipped",
+    "core_connect_failed",
+    "core_init_failed",
+)
+
+
+def parse_am_start_w(output: str) -> dict:
+    """Parse `adb shell am start -W` output. Missing fields stay None."""
+    result = {
+        "this_time_ms": None,
+        "wait_time_ms": None,
+        "total_time_ms": None,
+        "status": None,
+        "activity": None,
+        "raw": output,
+    }
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("Status:"):
+            result["status"] = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("Activity:"):
+            result["activity"] = stripped.split(":", 1)[1].strip()
+        else:
+            match = _KV.match(stripped)
+            if not match:
+                continue
+            key = match.group(1).strip().lower().replace(" ", "_")
+            value = int(match.group(2))
+            if key in {"this_time", "thistime"}:
+                result["this_time_ms"] = value
+            elif key in {"wait_time", "waittime"}:
+                result["wait_time_ms"] = value
+            elif key in {"total_time", "totaltime"}:
+                result["total_time_ms"] = value
+    return result
+
+
+def parse_meminfo(output: str) -> dict:
+    """Parse `dumpsys meminfo` App Summary / TOTAL PSS when present."""
+    java_heap = None
+    native_heap = None
+    total_pss = None
+    pid = None
+    process = None
+    header = re.search(r"MEMINFO in pid (\d+)\s*\[([^\]]+)\]", output)
+    if header:
+        pid = int(header.group(1))
+        process = header.group(2)
+
+    in_summary = False
+    for line in output.splitlines():
+        if "App Summary" in line:
+            in_summary = True
+            continue
+        if in_summary:
+            if "Java Heap:" in line:
+                java_heap = _last_int(line)
+            elif "Native Heap:" in line:
+                native_heap = _last_int(line)
+            elif re.search(r"\bTOTAL:\s+", line):
+                total_pss = _first_int(line.split("TOTAL:", 1)[1])
+                break
+
+    if total_pss is None:
+        match = re.search(r"TOTAL PSS:\s*(\d+)", output, re.I)
+        if match:
+            total_pss = int(match.group(1))
+        else:
+            for line in output.splitlines():
+                if line.strip().startswith("TOTAL") and re.search(r"\d+", line):
+                    total_pss = _first_int(line)
+                    if total_pss is not None:
+                        break
+
+    return {
+        "pid": pid,
+        "process": process,
+        "java_heap_kb": java_heap,
+        "native_heap_kb": native_heap,
+        "total_pss_kb": total_pss,
+        "parse_ok": total_pss is not None,
+    }
+
+
+def jank_is_valid(summary: dict | None) -> bool:
+    """Idle gfxinfo is only comparable when at least one frame was rendered."""
+    if not summary:
+        return False
+    frames = summary.get("total_frames")
+    if not isinstance(frames, int) or frames <= 0:
+        return False
+    parse_ok = summary.get("parse_ok")
+    return parse_ok is not False
+
+
+def parse_gfxinfo(output: str) -> dict:
+    total = _named_int(output, r"Total frames rendered:\s*(\d+)")
+    janky = _named_int(output, r"Janky frames:\s*(\d+)")
+    janky_pct = None
+    pct_match = re.search(r"Janky frames:\s*\d+\s*\(([\d.]+)%\)", output)
+    if pct_match:
+        janky_pct = float(pct_match.group(1))
+    return {
+        "total_frames": total,
+        "janky_frames": janky,
+        "janky_percent": janky_pct,
+        "p50_ms": _named_int(output, r"50th percentile:\s*(\d+)"),
+        "p90_ms": _named_int(output, r"90th percentile:\s*(\d+)"),
+        "p95_ms": _named_int(output, r"95th percentile:\s*(\d+)"),
+        "p99_ms": _named_int(output, r"99th percentile:\s*(\d+)"),
+        "parse_ok": total is not None,
+    }
+
+
+def parse_phase4_logcat(output: str) -> dict[str, int]:
+    marks: dict[str, int] = {}
+    for match in _PHASE4.finditer(output):
+        marks[match.group(1)] = int(match.group(2))
+    return marks
+
+
+_PHASE4_LINE = re.compile(r"\[PHASE4\] mark=([A-Za-z0-9_.]+) elapsed_ms=(\d+)(.*)$")
+_EXTRA = re.compile(r"([A-Za-z0-9_]+)=(\S+)")
+
+
+def _coerce_extra(raw: str):
+    if raw in {"true", "false"}:
+        return raw == "true"
+    if raw in {"null", "None"}:
+        return None
+    if re.fullmatch(r"-?\d+", raw):
+        return int(raw)
+    if re.fullmatch(r"-?\d+\.\d+", raw):
+        return float(raw)
+    return raw
+
+
+def parse_phase4_events(output: str) -> list[dict]:
+    """All PHASE4 marks with extras. Navigation emits many rows per mark name."""
+    events: list[dict] = []
+    for line in output.splitlines():
+        match = _PHASE4_LINE.search(line.rstrip("\r"))
+        if not match:
+            continue
+        extras = {}
+        for extra in _EXTRA.finditer(match.group(3) or ""):
+            extras[extra.group(1)] = _coerce_extra(extra.group(2))
+        events.append(
+            {
+                "mark": match.group(1),
+                "elapsed_ms": int(match.group(2)),
+                **extras,
+            }
+        )
+    return events
+
+
+def parse_proc_stat(output: str) -> dict:
+    """Parse /proc/<pid>/stat without splitting the parenthesized comm field."""
+    raw = output.strip()
+    close = raw.rfind(")")
+    if close < 0:
+        return {"available": False}
+    head = raw[: close + 1]
+    tail = raw[close + 1 :].strip().split()
+    if len(tail) < 13:
+        return {"available": False}
+    try:
+        return {
+            "available": True,
+            "pid": int(head.split("(", 1)[0].strip()),
+            "comm": head[head.find("(") + 1 : -1],
+            "state": tail[0],
+            "utime_ticks": int(tail[11]),
+            "stime_ticks": int(tail[12]),
+        }
+    except (TypeError, ValueError):
+        return {"available": False}
+
+
+def parse_proc_status(output: str) -> dict:
+    fields = {}
+    for line in output.splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        fields[key.strip()] = value.strip()
+
+    def number(name: str):
+        match = re.match(r"(\d+)", fields.get(name, ""))
+        return int(match.group(1)) if match else None
+
+    available = bool(fields)
+    return {
+        "available": available,
+        "threads": number("Threads"),
+        "voluntary_ctxt_switches": number("voluntary_ctxt_switches"),
+        "nonvoluntary_ctxt_switches": number("nonvoluntary_ctxt_switches"),
+        "rss_kb": number("VmRSS"),
+    }
+
+
+def summarize_power_events(events: list[dict], duration_s: float) -> dict:
+    """Summarize observer-only Phase 4F marks for one isolated window."""
+    counts: dict[str, int] = {}
+    methods: dict[str, int] = {}
+    results: dict[str, int] = {}
+    for event in events:
+        mark = str(event.get("mark") or "")
+        counts[mark] = counts.get(mark, 0) + 1
+        if mark == "core_ipc_dispatch":
+            method = str(event.get("method") or "unknown")
+            methods[method] = methods.get(method, 0) + 1
+        if mark in {"core_ipc_null", "core_ipc_error", "core_ipc_timeout"}:
+            results[mark] = results.get(mark, 0) + 1
+    minutes = duration_s / 60.0 if duration_s > 0 else 0.0
+    return {
+        "counts": counts,
+        "ipc_total": sum(methods.values()),
+        "ipc_methods": methods,
+        "ipc_per_min": round(sum(methods.values()) / minutes, 2) if minutes else None,
+        "ipc_method_per_min": {
+            key: round(value / minutes, 2) if minutes else None
+            for key, value in methods.items()
+        },
+        "ipc_outcomes": results,
+    }
+
+
+VPN_LIFECYCLE_MARKS = {
+    "applyProfile",
+    "applyProfile.groups",
+    "initCore",
+    "paused_core_attached",
+    "setupConfig",
+    "smart_paused_restored",
+    "startListener",
+    "vpn_action_requested",
+    "vpn_permission_begin",
+    "vpn_permission_result",
+    "vpn_service_dispatch",
+    "vpn_service_result",
+    "vpn_state_transition",
+    "vpn_snapshot",
+    "vpn_session_presence",
+    "vpn_remote_bind_begin",
+    "vpn_remote_connected",
+    "vpn_remote_disconnected",
+    "vpn_remote_unbound",
+    "vpn_flutter_sync_begin",
+    "vpn_flutter_sync_end",
+    "vpn_flutter_state",
+    "vpn_listener_start",
+    "vpn_listener_stop",
+    "vpn_tun_observed",
+    "vpn_action_complete",
+    "vpn_quick_action",
+    "vpn_tile_state",
+    "smart_stop_begin",
+    "smart_stop_complete",
+    "smart_resume_begin",
+    "smart_resume_complete",
+}
+
+
+def filter_vpn_lifecycle_lines(output: str) -> list[str]:
+    tokens = tuple(f"mark={name} " for name in VPN_LIFECYCLE_MARKS)
+    return [
+        line
+        for line in output.splitlines()
+        if "[PHASE4]" in line and any(token in line for token in tokens)
+    ]
+
+
+def summarize_vpn_lifecycle_events(events: list[dict]) -> dict:
+    """Preserve ordered 4E facts and report invariant flags without calling them bugs."""
+    scoped = [row for row in events if row.get("mark") in VPN_LIFECYCLE_MARKS]
+    transitions = [row for row in scoped if row.get("mark") == "vpn_state_transition"]
+    dispatches = [row for row in scoped if row.get("mark") == "vpn_service_dispatch"]
+    session_ids = sorted(
+        {
+            int(row["session_id"])
+            for row in scoped
+            if isinstance(row.get("session_id"), int) and row["session_id"] > 0
+        }
+    )
+    flags: list[dict] = []
+    transition_states = [str(row.get("new_state") or "") for row in transitions]
+    if transition_states and transition_states[-1] in {"STARTING", "STOPPING"}:
+        flags.append(
+            {
+                "code": f"final_{transition_states[-1].lower()}",
+                "classification": "observation",
+            }
+        )
+    if len(session_ids) > 1 and "STOPPED" not in transition_states:
+        flags.append(
+            {
+                "code": "session_id_changed_without_observed_stop",
+                "classification": "observation",
+            }
+        )
+    start_dispatches = [row for row in dispatches if row.get("action") == "start"]
+    if len(start_dispatches) > 1:
+        flags.append(
+            {
+                "code": "multiple_native_start_dispatches",
+                "classification": "observation",
+                "count": len(start_dispatches),
+            }
+        )
+    native_state = transition_states[-1] if transition_states else None
+    flutter_rows = [row for row in scoped if row.get("mark") == "vpn_flutter_state"]
+    latest_flutter = flutter_rows[-1] if flutter_rows else None
+    if native_state and latest_flutter:
+        flutter_running = latest_flutter.get("flutter_is_start") is True
+        flutter_paused = latest_flutter.get("flutter_smart_stopped") is True
+        if native_state == "RUNNING":
+            if not flutter_running:
+                flags.append(
+                    {"code": "native_running_flutter_stopped", "classification": "observation"}
+                )
+            if flutter_paused:
+                flags.append(
+                    {"code": "native_running_flutter_paused", "classification": "observation"}
+                )
+        elif native_state == "STOPPED" and flutter_running:
+            flags.append(
+                {"code": "native_stopped_flutter_running", "classification": "observation"}
+            )
+        elif native_state == "PAUSED" and (flutter_running or not flutter_paused):
+            flags.append(
+                {"code": "native_paused_flutter_not_paused", "classification": "observation"}
+            )
+    tile_rows = [row for row in scoped if row.get("mark") == "vpn_tile_state"]
+    if native_state and tile_rows:
+        expected = {
+            "RUNNING": "START",
+            "STARTING": "PENDING",
+            "STOPPING": "PENDING",
+            "PAUSED": "STOP",
+            "STOPPED": "STOP",
+        }.get(native_state, "STOP")
+        if tile_rows[-1].get("run_state") != expected:
+            flags.append(
+                {"code": "tile_native_state_disagreement", "classification": "observation"}
+            )
+    return {
+        "event_count": len(scoped),
+        "events": scoped,
+        "transitions": transitions,
+        "session_ids": session_ids,
+        "start_dispatch_count": len(start_dispatches),
+        "stop_dispatch_count": sum(
+            1 for row in dispatches if row.get("action") == "stop"
+        ),
+        "flags": flags,
+        "latest_native_state": native_state,
+        "latest_flutter_state": latest_flutter,
+    }
+
+
+def assess_vpn_lifecycle_observations(observations: list[dict]) -> list[dict]:
+    """Flag cross-layer contradictions while retaining the underlying snapshots."""
+    flags: list[dict] = []
+    for row in observations:
+        label = row.get("label")
+        session = row.get("session") or {}
+        vpn = row.get("vpn") or {}
+        state = session.get("state")
+        tun = bool(vpn.get("tun_ifaces"))
+        if len(vpn.get("tun_ifaces") or []) > 1:
+            flags.append({"code": "multiple_tun_interfaces", "label": label})
+        if state == "RUNNING" and not tun:
+            flags.append({"code": "running_but_tun_missing", "label": label})
+        if state == "STOPPED" and tun:
+            flags.append({"code": "stopped_but_tun_present", "label": label})
+        if state == "PAUSED" and tun:
+            flags.append({"code": "paused_but_tun_present", "label": label})
+    return flags
+
+
+def summarize_delay_events(
+    events: list[dict],
+    *,
+    run_id: str | None = None,
+    window_id: str | None = None,
+) -> dict:
+    """peak_inflight from delay_request_started extras. batch(100) is await-only."""
+    scoped = events
+    if window_id:
+        scoped = [e for e in events if str(e.get("window_id") or "") == str(window_id)]
+    elif run_id:
+        scoped = [e for e in events if str(e.get("run_id") or "") == str(run_id)]
+    started = [e for e in scoped if e.get("mark") == "delay_request_started"]
+    finished = [e for e in scoped if e.get("mark") == "delay_request_finished"]
+    failed = [e for e in scoped if e.get("mark") == "delay_request_failed"]
+    after_map = [e for e in scoped if e.get("mark") == "delay_test_after_map"]
+    peaks = []
+    for row in started + after_map:
+        value = row.get("peak_inflight")
+        if isinstance(value, (int, float)):
+            peaks.append(int(value))
+    return {
+        "started": len(started),
+        "finished": len(finished),
+        "failed": len(failed),
+        "peak_inflight": max(peaks) if peaks else 0,
+        "after_map_started": after_map[-1].get("started") if after_map else None,
+        "batch_limits_start": False,
+        "run_id": run_id,
+        "window_id": window_id,
+    }
+
+
+def summarize_select_events(events: list[dict]) -> dict:
+    """Bind Core ACK extras to the request generation, not the latest intent."""
+    intents = [e for e in events if e.get("mark") == "proxy_select_intent"]
+    superseded = [e for e in events if e.get("mark") == "proxy_select_superseded"]
+    dispatch = [e for e in events if e.get("mark") == "proxy_select_dispatch"]
+    acks = [e for e in events if e.get("mark") == "proxy_select_core_ack"]
+    visual = [e for e in events if e.get("mark") == "proxy_select_visual"]
+    consistent = [e for e in events if e.get("mark") == "proxy_select_groups_consistent"]
+    intent_gens = [e.get("gen") for e in intents if e.get("gen") is not None]
+    ack_gens = [e.get("gen") for e in acks if e.get("gen") is not None]
+    latest = intent_gens[-1] if intent_gens else None
+    ack_bound_to_latest_only = bool(ack_gens) and all(g == latest for g in ack_gens)
+    visuals = [e.get("elapsed_from_intent_ms") for e in visual if isinstance(e.get("elapsed_from_intent_ms"), (int, float))]
+    acks_from_intent = [
+        e.get("elapsed_from_intent_ms")
+        for e in acks
+        if isinstance(e.get("elapsed_from_intent_ms"), (int, float))
+    ]
+    return {
+        "intent_count": len(intents),
+        "superseded_count": len(superseded),
+        "dispatch_count": len(dispatch),
+        "ack_count": len(acks),
+        "visual_count": len(visual),
+        "groups_consistent_count": len(consistent),
+        "intent_gens": intent_gens,
+        "ack_gens": ack_gens,
+        "ack_bound_to_latest_only": ack_bound_to_latest_only,
+        "tap_to_visual_ms": visuals,
+        "tap_to_core_ack_ms": acks_from_intent,
+    }
+
+
+def _ipc_percentile(values: list[int], p: float) -> float | None:
+    if not values:
+        return None
+    xs = sorted(values)
+    if len(xs) == 1:
+        return float(xs[0])
+    rank = (len(xs) - 1) * p
+    lo = int(rank)
+    hi = min(lo + 1, len(xs) - 1)
+    frac = rank - lo
+    return xs[lo] + (xs[hi] - xs[lo]) * frac
+
+
+def latest_ipc_window_id(
+    events: list[dict],
+    *,
+    run_id: str | None = None,
+    page: str | None = None,
+) -> str | None:
+    for row in reversed(events):
+        if row.get("mark") != "ipc_window_begin":
+            continue
+        if run_id is not None and str(row.get("run_id") or "") != str(run_id):
+            continue
+        if page is not None and str(row.get("page") or "") != str(page):
+            continue
+        wid = row.get("window_id")
+        if wid:
+            return str(wid)
+    return None
+
+
+def summarize_ipc_events(
+    events: list[dict],
+    page: str | None = None,
+    *,
+    run_id: str | None = None,
+    window_id: str | None = None,
+) -> dict:
+    """Pair dispatch→complete by request id inside one measurement window.
+
+    Page rates use DISPATCH in the window. Transport latency uses only
+    matched ids dispatched and completed in the same window.
+    `core_not_ready` is preinvoke wait, not transport latency.
+    """
+    resolved_window = window_id
+    if resolved_window is None and (run_id or page):
+        resolved_window = latest_ipc_window_id(events, run_id=run_id, page=page)
+
+    def _in_window(row: dict) -> bool:
+        if resolved_window:
+            return str(row.get("window_id") or "") == str(resolved_window)
+        if run_id:
+            return str(row.get("run_id") or "") == str(run_id)
+        if page:
+            return str(row.get("page") or "") == str(page)
+        return True
+
+    scoped = [row for row in events if _in_window(row)]
+    begin = next((e for e in scoped if e.get("mark") == "ipc_window_begin"), {})
+    inflight_at_start = begin.get("inflight_at_window_start")
+    if not isinstance(inflight_at_start, int):
+        inflight_at_start = 0
+
+    dispatches = [e for e in scoped if e.get("mark") == "core_ipc_dispatch"]
+    completes = [e for e in scoped if e.get("mark") == "core_ipc_complete"]
+    dispatch_ids = {str(e.get("id")) for e in dispatches if e.get("id")}
+    complete_ids = {str(e.get("id")) for e in completes if e.get("id")}
+    matched_ids = dispatch_ids & complete_ids
+    unfinished = sorted(dispatch_ids - complete_ids)
+    complete_unmatched = sorted(complete_ids - dispatch_ids)
+
+    result_class: dict[str, int] = defaultdict(int)
+    overlap: dict[str, int] = defaultdict(int)
+    method_peak: dict[str, int] = defaultdict(int)
+    durations: dict[str, list[int]] = defaultdict(list)
+    callers: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    peak_inflight = inflight_at_start
+    dispatch_by_method: dict[str, int] = defaultdict(int)
+
+    for row in dispatches:
+        method = str(row.get("method") or "unknown")
+        dispatch_by_method[method] += 1
+        caller = str(row.get("caller") or "unknown")
+        callers[method][caller] += 1
+        same = row.get("same_method_inflight")
+        inf = row.get("inflight")
+        if isinstance(same, int):
+            method_peak[method] = max(method_peak[method], same)
+            if same > 1:
+                overlap[method] += 1
+        if isinstance(inf, int):
+            peak_inflight = max(peak_inflight, inf)
+
+    for row in completes:
+        result_class[str(row.get("result_class") or "unknown")] += 1
+        inf = row.get("inflight")
+        if isinstance(inf, int):
+            peak_inflight = max(peak_inflight, inf)
+        if str(row.get("id")) not in matched_ids:
+            continue
+        if row.get("latency_kind") == "preinvoke" or row.get("result_class") == "core_not_ready":
+            continue
+        method = str(row.get("method") or "unknown")
+        dur = row.get("duration")
+        if isinstance(dur, int):
+            durations[method].append(dur)
+        elif isinstance(dur, float):
+            durations[method].append(int(dur))
+
+    methods = {}
+    for method, count in dispatch_by_method.items():
+        samples = durations.get(method) or []
+        methods[method] = {
+            "count": count,
+            "matched_complete": len(samples),
+            "overlap_count": overlap.get(method, 0),
+            "peak_same_method_inflight": method_peak.get(method, 0),
+            "p50_ms": _ipc_percentile(samples, 0.50),
+            "p90_ms": _ipc_percentile(samples, 0.90),
+            "p99_ms": _ipc_percentile(samples, 0.99),
+            "max_ms": max(samples) if samples else None,
+            "callers": dict(callers.get(method) or {}),
+        }
+    for method, count in overlap.items():
+        methods.setdefault(
+            method,
+            {
+                "count": 0,
+                "matched_complete": 0,
+                "overlap_count": 0,
+                "peak_same_method_inflight": method_peak.get(method, 0),
+                "p50_ms": None,
+                "p90_ms": None,
+                "p99_ms": None,
+                "max_ms": None,
+                "callers": {},
+            },
+        )
+        methods[method]["overlap_count"] = count
+        methods[method]["peak_same_method_inflight"] = method_peak.get(method, 0)
+
+    return {
+        "page": page or begin.get("page"),
+        "run_id": run_id or begin.get("run_id"),
+        "window_id": resolved_window,
+        "inflight_at_start": inflight_at_start,
+        "dispatched_in_window": len(dispatches),
+        "completed_in_window": len(completes),
+        "matched_dispatch_complete": len(matched_ids),
+        "unfinished_at_end": len(unfinished),
+        "complete_without_window_dispatch": len(complete_unmatched),
+        "unfinished_ids": unfinished[:20],
+        "total": len(dispatches),
+        "dispatch_count": len(dispatches),
+        "peak_inflight": peak_inflight,
+        "result_class": dict(result_class),
+        "overlap": dict(overlap),
+        "methods": methods,
+        "transport_null_or_timeout": result_class.get("transport_null_or_timeout", 0),
+        "core_not_ready": result_class.get("core_not_ready", 0),
+        "core_error": result_class.get("core_error", 0),
+        "success": result_class.get("success", 0),
+    }
+
+
+
+def parse_display_refresh_hz(output: str) -> dict:
+    """Collect dumpsys refresh-rate *candidates*. Max is not actual presentation Hz.
+
+    Devices often report a 120 Hz physical/supported mode alongside a 60 Hz
+    render/presentation hint. `system_max_refresh_hz` is the highest number
+    seen. It is not the FrameTiming budget source.
+    """
+    candidates: list[float] = []
+    for pattern in (
+        r"renderFrameRate\s*=\s*([\d.]+)",
+        r"refreshRate\s*=\s*([\d.]+)",
+        r"fps=([\d.]+)",
+        r"Refresh rate:\s*([\d.]+)",
+    ):
+        for match in re.finditer(pattern, output, re.I):
+            try:
+                value = float(match.group(1))
+            except ValueError:
+                continue
+            if 20 <= value <= 240:
+                candidates.append(value)
+    unique = sorted(set(round(v, 3) for v in candidates), reverse=True)[:8]
+    system_max = max(candidates) if candidates else None
+    return {
+        "system_refresh_candidates": unique,
+        "system_max_refresh_hz": system_max,
+        # Legacy alias of the max reported candidate. Not actual presentation Hz.
+        "refresh_hz": system_max,
+        "actual_presentation_hz": None,
+        "budget_ms": None,
+        "samples": unique,
+    }
+
+
+def assess_refresh_rate_provenance(
+    *,
+    flutter_refresh_hz: float | None,
+    system_max_refresh_hz: float | None,
+    tolerance_hz: float = 1.0,
+) -> dict:
+    """Compare Flutter display.refreshRate with dumpsys max. Do not invent a rate."""
+    mismatch = False
+    if flutter_refresh_hz is not None and system_max_refresh_hz is not None:
+        mismatch = abs(float(flutter_refresh_hz) - float(system_max_refresh_hz)) > tolerance_hz
+    effective = None
+    if flutter_refresh_hz:
+        try:
+            hz = float(flutter_refresh_hz)
+            if hz > 0:
+                effective = 1000.0 / hz
+        except (TypeError, ValueError):
+            effective = None
+    return {
+        "flutter_refresh_hz": flutter_refresh_hz,
+        "system_max_refresh_hz": system_max_refresh_hz,
+        "frame_budget_source": (
+            "flutter_display_refresh_rate" if flutter_refresh_hz else None
+        ),
+        "effective_budget_ms": effective,
+        "refresh_rate_mismatch": mismatch,
+        "over_budget_comparable": bool(flutter_refresh_hz) and not mismatch,
+    }
+
+
+def parse_phase4_session_fields(output: str) -> dict:
+    """Last session_snapshot extras from PHASE4 logcat (session_id / state).
+
+    Timing-only. Do not use missing log marks to judge session continuity.
+    """
+    session_id = None
+    state = None
+    for line in output.splitlines():
+        if "mark=session_snapshot" not in line:
+            continue
+        sid = re.search(r"session_id=([0-9]+)", line)
+        st = re.search(r"\bstate=([A-Za-z_]+)", line)
+        if sid:
+            session_id = int(sid.group(1))
+        if st:
+            state = st.group(1)
+    return {"session_id": session_id, "state": state}
+
+
+def parse_remote_session_presence(text: str) -> dict:
+    """Parse `:remote` files/remote_session_presence.txt written by SessionPresence.encode."""
+    session_id = None
+    state = None
+    pid = None
+    started_at = None
+    smart_paused = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if "=" not in stripped:
+            continue
+        key, _, value = stripped.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if key == "sessionId":
+            try:
+                session_id = int(value)
+            except ValueError:
+                session_id = None
+        elif key == "state":
+            state = value or None
+        elif key == "pid":
+            try:
+                pid = int(value)
+            except ValueError:
+                pid = None
+        elif key == "startedAt":
+            try:
+                started_at = int(value)
+            except ValueError:
+                started_at = None
+        elif key == "smartPaused":
+            lowered = value.lower()
+            if lowered in {"true", "false"}:
+                smart_paused = lowered == "true"
+    parse_ok = isinstance(session_id, int) and bool(state)
+    return {
+        "session_id": session_id,
+        "state": state,
+        "pid": pid,
+        "started_at": started_at,
+        "smart_paused": smart_paused,
+        "parse_ok": parse_ok,
+    }
+
+
+def assess_running_reattach_round(
+    *,
+    remote_before: int | None,
+    kill: dict,
+    ui_pid_before: int,
+    remote_mid: int | None,
+    remote_post: int | None,
+    session_before: dict,
+    session_post: dict,
+    vpn_ready_before,
+    vpn_ready_post,
+) -> tuple[bool, str | None]:
+    """Formal running-reattach gates. Any miss is not official data."""
+    if kill.get("ok") is not True:
+        return False, "kill_ui_keep_remote_failed"
+    if kill.get("ui_pid_after") == ui_pid_before:
+        return False, "old_ui_pid_still_alive"
+    if remote_before is None:
+        return False, "remote_pid_missing"
+    if remote_mid != remote_before or remote_post != remote_before:
+        return False, "remote_pid_changed"
+    sid_before = session_before.get("session_id")
+    sid_post = session_post.get("session_id")
+    if not isinstance(sid_before, int) or sid_before <= 0:
+        return False, "session_id_missing_before"
+    if not isinstance(sid_post, int) or sid_post <= 0:
+        return False, "session_id_missing_after"
+    if sid_before != sid_post:
+        return False, "session_id_changed"
+    if session_before.get("state") != "RUNNING" or session_post.get("state") != "RUNNING":
+        return False, "state_not_running"
+    if vpn_ready_before is not True or vpn_ready_post is not True:
+        return False, "vpn_ready_lost"
+    return True, None
+
+
+def assess_running_navigation_preconditions(*, vpn: dict, session: dict) -> tuple[bool, list[str]]:
+    """RUNNING navigation may start only with a live VPN session. Never force-stop."""
+    reasons: list[str] = []
+    if vpn.get("vpn_service_running") is not True:
+        reasons.append("vpn_service_not_running")
+    if not vpn.get("tun_ifaces"):
+        reasons.append("tun_missing")
+    if vpn.get("remote_pid") is None:
+        reasons.append("remote_not_running")
+    if vpn.get("vpn_ready") is not True:
+        reasons.append("vpn_ready_false")
+    sid = session.get("session_id")
+    if not isinstance(sid, int) or sid <= 0:
+        reasons.append("session_id_invalid")
+    if session.get("state") != "RUNNING":
+        reasons.append("session_not_running")
+    return not reasons, reasons
+
+
+def assess_running_navigation_continuity(
+    *,
+    before_vpn: dict,
+    after_vpn: dict,
+    before_session: dict,
+    after_session: dict,
+) -> tuple[bool, list[str]]:
+    """RUNNING navigation fails if the VPN session is restarted or reconfigured."""
+    reasons: list[str] = []
+    if before_vpn.get("remote_pid") != after_vpn.get("remote_pid"):
+        reasons.append("remote_pid_changed")
+    if before_session.get("session_id") != after_session.get("session_id"):
+        reasons.append("session_id_changed")
+    if after_vpn.get("vpn_ready") is not True:
+        reasons.append("vpn_ready_lost")
+    if after_session.get("state") != "RUNNING":
+        reasons.append("session_not_running_after")
+    before_tun = set(before_vpn.get("tun_ifaces") or [])
+    after_tun = set(after_vpn.get("tun_ifaces") or [])
+    if before_tun != after_tun:
+        reasons.append("tun_interrupted")
+    return not reasons, reasons
+
+
+def ui_process_kill_commands(package: str, pid: int) -> list[str]:
+    """Commands that may kill the Flutter UI pid. Never force-stop the package."""
+    return [
+        f"run-as {package} kill -9 {pid}",
+        f"am kill {package}",
+    ]
+
+
+def parse_pidof(output: str) -> int | None:
+    text = output.strip().split()
+    if not text:
+        return None
+    try:
+        return int(text[0])
+    except ValueError:
+        return None
+
+
+def parse_tun_interfaces(ip_link_output: str) -> list[str]:
+    """Return only real `tunN` interface names from `ip -o link show`."""
+    found: list[str] = []
+    for line in ip_link_output.splitlines():
+        match = _TUN_IFACE.match(line.strip())
+        if match:
+            found.append(match.group(1))
+    return found
+
+
+_PROC_TUN = re.compile(r"^\s*(tun\d+)\s*:")
+_SYS_TUN = re.compile(r"^tun\d+$")
+
+
+def parse_tun_from_proc_net_dev(output: str) -> list[str]:
+    """Parse `tunN` names from `/proc/net/dev`. Does not match `tunl0`."""
+    found: list[str] = []
+    for line in output.splitlines():
+        match = _PROC_TUN.match(line)
+        if match:
+            found.append(match.group(1))
+    return found
+
+
+def parse_tun_from_sys_class_net(output: str) -> list[str]:
+    """Parse `tunN` names from `ls /sys/class/net`."""
+    found: list[str] = []
+    for line in output.split():
+        name = line.strip()
+        if _SYS_TUN.match(name):
+            found.append(name)
+    return found
+
+
+def connectivity_has_vpn_network(connectivity_output: str) -> bool:
+    """Detect an active VPN network block in dumpsys connectivity.
+
+    Requires NETWORK-type VPN wording; a bare substring 'vpn' is not enough.
+    """
+    for line in connectivity_output.splitlines():
+        lower = line.lower()
+        if "networkagentinfo" in lower.replace(" ", "") and "vpn" in lower:
+            return True
+        if re.search(r"\btype:\s*vpn\b", lower):
+            return True
+        if re.search(r"\bnetworkinfo:\s*type:\s*vpn\b", lower):
+            return True
+        if "vpn {" in lower or "transport=vpn" in lower or "transports: vpn" in lower:
+            return True
+    return False
+
+
+def assess_vpn_state(
+    *,
+    tun_ifaces: list[str],
+    vpn_service_running: bool,
+    remote_pid: int | None,
+    connectivity_vpn: bool,
+) -> dict:
+    """Distinguish weak start_observable from confidently confirmed VPN ready.
+
+    ready is True only when VpnService is running and a real tunN iface exists.
+    remote_pid alone never proves VPN ready (CommonService can own :remote).
+    """
+    has_tun = bool(tun_ifaces)
+    observable = bool(vpn_service_running or has_tun or remote_pid is not None)
+    if vpn_service_running and has_tun:
+        ready = True
+        confidence = "confirmed"
+    elif not observable:
+        ready = False
+        confidence = "confirmed_absent"
+    else:
+        # Partial signals only — do not claim ready.
+        ready = None
+        confidence = "unconfirmed"
+    return {
+        "tun_ifaces": list(tun_ifaces),
+        "vpn_service_running": vpn_service_running,
+        "remote_pid": remote_pid,
+        "connectivity_vpn": connectivity_vpn,
+        "start_observable": observable,
+        "vpn_ready": ready,
+        "confidence": confidence,
+    }
+
+
+def vpn_stop_cleared(state: dict) -> bool:
+    """STOP success: VpnService gone and no tunN interface remains."""
+    return (not state.get("vpn_service_running")) and not state.get("tun_ifaces")
+
+
+def aggregate_startup_marks(measure_rows: list[dict]) -> dict:
+    """Aggregate PHASE4 marks across formal measurement runs (not warmup)."""
+    by_name: dict[str, list[float]] = defaultdict(list)
+    outcome_counts = {name: 0 for name in CORE_OUTCOME_MARKS}
+    runs_with_marks = 0
+    for row in measure_rows:
+        marks = row.get("phase4_marks") or {}
+        if not marks:
+            continue
+        runs_with_marks += 1
+        for name in TIMING_MARKS:
+            if name in marks:
+                by_name[name].append(float(marks[name]))
+        outcome = None
+        for name in CORE_OUTCOME_MARKS:
+            if name in marks:
+                outcome = name
+                break
+        if outcome:
+            outcome_counts[outcome] += 1
+    from stats import summarize  # local import avoids cycle at module load in tests
+
+    return {
+        "runs_with_marks": runs_with_marks,
+        "core_outcome_counts": outcome_counts,
+        "stats": {name: summarize(values) for name, values in sorted(by_name.items())},
+    }
+
+
+def _named_int(text: str, pattern: str) -> int | None:
+    match = re.search(pattern, text)
+    return int(match.group(1)) if match else None
+
+
+def _first_int(text: str) -> int | None:
+    match = re.search(r"(-?\d+)", text)
+    return int(match.group(1)) if match else None
+
+
+def _last_int(text: str) -> int | None:
+    matches = re.findall(r"(-?\d+)", text)
+    return int(matches[-1]) if matches else None

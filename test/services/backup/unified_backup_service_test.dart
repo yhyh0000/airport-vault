@@ -1,0 +1,547 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:archive/archive.dart';
+import 'package:drift/native.dart';
+import 'package:crypto/crypto.dart';
+import 'package:fl_clash/database/database.dart';
+import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/services/backup/restore_service.dart';
+import 'package:fl_clash/services/backup/unified_backup_service.dart';
+import 'package:fl_clash/services/backup/worker_v1_parser.dart';
+import 'package:fl_clash/services/unified_backup_export/exporter.dart';
+import 'package:fl_clash/services/unified_backup_export/models.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+
+void main() {
+  test(
+    'traditional v2.0.1 database backup restores groups and settings',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('unified-v201-test-');
+      final oldDbFile = File(p.join(temp.path, 'old.sqlite'));
+      final oldDb = Database(NativeDatabase(oldDbFile));
+      const profile = Profile(
+        id: 42,
+        label: 'v2.0.1',
+        autoUpdateDuration: Duration(days: 1),
+        overwriteType: OverwriteType.custom,
+      );
+      await oldDb.restore(
+        [profile],
+        const [],
+        const [],
+        const [],
+        [
+          const ProxyGroup(
+            profileId: 42,
+            id: 420,
+            name: 'Legacy Group',
+            type: GroupType.Selector,
+            proxies: ['DIRECT'],
+          ),
+        ],
+        isOverride: true,
+      );
+      await oldDb.close();
+
+      final config = const Config(
+        currentProfileId: 42,
+        overrideDns: true,
+        themeProps: defaultThemeProps,
+      ).toJson()..['version'] = 3;
+      final archive = Archive()
+        ..addFile(
+          ArchiveFile.bytes('database.sqlite', await oldDbFile.readAsBytes()),
+        )
+        ..addFile(ArchiveFile.string('config.json', jsonEncode(config)))
+        ..addFile(ArchiveFile.string('profiles/42.yaml', 'proxies: []\n'));
+      final targetDb = Database(NativeDatabase.memory());
+      addTearDown(() async {
+        await targetDb.close();
+        await temp.delete(recursive: true);
+      });
+
+      final result =
+          await UnifiedBackupService(
+            database: targetDb,
+            paths: RestorePaths(
+              profilesDirectory: p.join(temp.path, 'restored-profiles'),
+              scriptsDirectory: p.join(temp.path, 'restored-scripts'),
+            ),
+          ).restoreBytes(
+            Uint8List.fromList(ZipEncoder().encode(archive)),
+            override: true,
+          );
+
+      expect((await targetDb.profilesDao.query().get()).single.id, 42);
+      expect(
+        (await targetDb.proxyGroupsDao.query(42).get()).single.name,
+        'Legacy Group',
+      );
+      expect(result.config?.overrideDns, true);
+    },
+  );
+
+  test('Worker v1 archive writes profile and fixed URL end to end', () async {
+    final temp = await Directory.systemTemp.createTemp('unified-worker-test-');
+    final db = Database(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await temp.delete(recursive: true);
+    });
+
+    final snapshotPath = p.join(temp.path, 'unified', 'worker-v1.zip');
+    final archiveBytes = _workerArchive();
+    var currentConfig = const Config(
+      themeProps: defaultThemeProps,
+      overrideDns: true,
+    );
+    var configWrites = 0;
+    final stages = <String>[];
+    final result = await UnifiedBackupService(
+      database: db,
+      paths: RestorePaths(
+        profilesDirectory: p.join(temp.path, 'profiles'),
+        scriptsDirectory: p.join(temp.path, 'scripts'),
+        workerUnifiedArchivePath: snapshotPath,
+      ),
+      readConfig: () async => currentConfig,
+      writeConfig: (value) async {
+        configWrites++;
+        currentConfig = value;
+        return true;
+      },
+      onProgress: (stage, profileCount) {
+        stages.add('$stage:${profileCount ?? '-'}');
+      },
+    ).restoreBytes(archiveBytes, override: true);
+
+    final profile = (await db.profilesDao.query().get()).single;
+    expect(profile.url, 'https://vault.example/config/example/fixed-token');
+    expect(profile.autoUpdate, false);
+    expect(profile.autoUpdateDuration, const Duration(minutes: 1440));
+    expect(result.currentProfileId, profile.id);
+    expect(
+      await File(
+        p.join(temp.path, 'profiles', '${profile.id}.yaml'),
+      ).readAsString(),
+      'proxies: []\n',
+    );
+    expect(await File(snapshotPath).readAsBytes(), archiveBytes);
+    expect(configWrites, 0);
+    expect(currentConfig.overrideDns, true);
+    expect(stages, contains('format-detected:workerUnifiedV1:-'));
+    expect(stages, contains('archive-parsed:1'));
+    expect(stages, contains('committed:1'));
+    expect(
+      const WorkerV1Parser()
+          .parse(await File(snapshotPath).readAsBytes())
+          .manifest
+          .airports
+          .length,
+      1,
+    );
+  });
+
+  test('V1 preserves a Slclash local-file profile as local', () async {
+    final temp = await Directory.systemTemp.createTemp('unified-local-test-');
+    final db = Database(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await temp.delete(recursive: true);
+    });
+
+    await UnifiedBackupService(
+      database: db,
+      paths: RestorePaths(
+        profilesDirectory: p.join(temp.path, 'profiles'),
+        scriptsDirectory: p.join(temp.path, 'scripts'),
+        workerUnifiedArchivePath: p.join(temp.path, 'worker-v1.zip'),
+      ),
+    ).restoreBytes(_workerArchive(sourceType: 'local'), override: true);
+
+    final profile = (await db.profilesDao.query().get()).single;
+    expect(profile.type, ProfileType.file);
+    expect(profile.url, isEmpty);
+    expect(profile.autoUpdate, isFalse);
+  });
+
+  test(
+    'Worker v1 override preserves scripts rules links and proxy groups',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('unified-scope-test-');
+      final db = Database(NativeDatabase.memory());
+      addTearDown(() async {
+        await db.close();
+        await temp.delete(recursive: true);
+      });
+
+      final script = Script(
+        id: 9,
+        label: 'keep-script',
+        lastUpdateTime: DateTime.utc(2026),
+      );
+      await db.restore(
+        const [],
+        [script],
+        const [
+          Rule(
+            id: 10,
+            ruleAction: RuleAction.DOMAIN,
+            content: 'example.com',
+            ruleTarget: 'DIRECT',
+          ),
+        ],
+        const [ProfileRuleLink(ruleId: 10, scene: RuleScene.added, order: 'a')],
+        const [
+          ProxyGroup(
+            id: 11,
+            name: 'Keep Group',
+            type: GroupType.Selector,
+            proxies: ['DIRECT'],
+          ),
+        ],
+        isOverride: true,
+      );
+      final scriptFile = File(p.join(temp.path, 'scripts', '9.js'));
+      await scriptFile.parent.create(recursive: true);
+      await scriptFile.writeAsString('keep');
+
+      await UnifiedBackupService(
+        database: db,
+        paths: RestorePaths(
+          profilesDirectory: p.join(temp.path, 'profiles'),
+          scriptsDirectory: p.join(temp.path, 'scripts'),
+          workerUnifiedArchivePath: p.join(temp.path, 'worker-v1.zip'),
+        ),
+      ).restoreBytes(_workerArchive(), override: true);
+
+      expect((await db.scriptsDao.query().get()).single.label, 'keep-script');
+      expect((await db.rulesDao.queryAllRules()).single.id, 10);
+      expect((await db.rulesDao.queryAllLinks()).single.ruleId, 10);
+      expect(
+        (await db.proxyGroupsDao.queryAll().get()).single.name,
+        'Keep Group',
+      );
+      expect(await scriptFile.readAsString(), 'keep');
+      expect((await db.profilesDao.query().get()).length, 1);
+    },
+  );
+
+  test('restores the real Worker client policy roundtrip fixture', () async {
+    final bytes = await File(
+      p.join(
+        Directory.current.path,
+        'test',
+        'fixtures',
+        'worker-client-policy-roundtrip-v1.zip',
+      ),
+    ).readAsBytes();
+    final parsed = const WorkerV1Parser().parse(bytes);
+    expect(parsed.manifest.airports, hasLength(3));
+
+    final temp = await Directory.systemTemp.createTemp('policy-roundtrip-');
+    final db = Database(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await temp.delete(recursive: true);
+    });
+    await UnifiedBackupService(
+      database: db,
+      paths: RestorePaths(
+        profilesDirectory: p.join(temp.path, 'profiles'),
+        scriptsDirectory: p.join(temp.path, 'scripts'),
+        workerUnifiedArchivePath: p.join(temp.path, 'worker-v1.zip'),
+      ),
+    ).restoreBytes(bytes, override: true);
+
+    final profiles = {
+      for (final profile in await db.profilesDao.query().get())
+        profile.label: profile,
+    };
+    expect(profiles['Worker Profile']?.autoUpdate, false);
+    expect(
+      profiles['Worker Profile']?.autoUpdateDuration,
+      const Duration(minutes: 60),
+    );
+    expect(profiles['Slclash Remote']?.autoUpdate, true);
+    expect(
+      profiles['Slclash Remote']?.autoUpdateDuration,
+      const Duration(minutes: 1440),
+    );
+    expect(profiles['备用']?.autoUpdate, false);
+    expect(profiles['备用']?.autoUpdateDuration, const Duration(minutes: 1440));
+  });
+
+  test('old Worker full config imports without applying config', () async {
+    final temp = await Directory.systemTemp.createTemp('worker-old-config-');
+    final db = Database(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await temp.delete(recursive: true);
+    });
+    var writes = 0;
+    final result =
+        await UnifiedBackupService(
+          database: db,
+          paths: RestorePaths(
+            profilesDirectory: p.join(temp.path, 'profiles'),
+            scriptsDirectory: p.join(temp.path, 'scripts'),
+            workerUnifiedArchivePath: p.join(temp.path, 'worker-v1.zip'),
+          ),
+          readConfig: () async =>
+              const Config(themeProps: defaultThemeProps, overrideDns: true),
+          writeConfig: (_) async {
+            writes++;
+            return true;
+          },
+        ).restoreBytes(
+          _workerArchive(
+            configYaml: 'mixed-port: 1234\nproxy-providers: {}\nrules: []\n',
+          ),
+          override: true,
+        );
+
+    expect(result.config, isNull);
+    expect(writes, 0);
+    expect(
+      (await db.profilesDao.query().get()).single.url,
+      contains('/config/'),
+    );
+  });
+
+  test('Slclash v2 backup preserves its embedded Worker snapshot', () async {
+    final temp = await Directory.systemTemp.createTemp('unified-wrapper-test-');
+    final db = Database(NativeDatabase.memory());
+    addTearDown(() async {
+      await db.close();
+      await temp.delete(recursive: true);
+    });
+    final worker = _workerArchive();
+    final id = int.parse('1234abcd', radix: 16);
+    final metadata = {
+      'backupType': 'profiles_only_v2',
+      'currentProfileId': id,
+      'profiles': [
+        {
+          'id': id,
+          'label': 'Example',
+          'url': 'https://vault.example/config/example/fixed-token',
+        },
+      ],
+      'scripts': <Object>[],
+      'rules': <Object>[],
+      'links': <Object>[],
+      'proxyGroups': <Object>[],
+    };
+    final outer = Archive()
+      ..addFile(ArchiveFile.string('metadata.json', jsonEncode(metadata)))
+      ..addFile(ArchiveFile.string('profiles/$id.yaml', 'proxies: []\n'))
+      ..addFile(ArchiveFile.bytes('subscription-center/worker-v1.zip', worker));
+    final snapshot = p.join(temp.path, 'unified', 'worker-v1.zip');
+    await UnifiedBackupService(
+      database: db,
+      paths: RestorePaths(
+        profilesDirectory: p.join(temp.path, 'profiles'),
+        scriptsDirectory: p.join(temp.path, 'scripts'),
+        workerUnifiedArchivePath: snapshot,
+      ),
+    ).restoreBytes(
+      Uint8List.fromList(ZipEncoder().encode(outer)),
+      override: true,
+    );
+    expect(await File(snapshot).readAsBytes(), worker);
+  });
+
+  test(
+    'v2 backup preserves custom profile, groups, settings and defaults',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('unified-v2-test-');
+      final db = Database(NativeDatabase.memory());
+      addTearDown(() async {
+        await db.close();
+        await temp.delete(recursive: true);
+      });
+      final metadata = {
+        'backupType': 'profiles_only_v2',
+        'currentProfileId': 7,
+        'profiles': [
+          {
+            'id': 7,
+            'label': 'custom',
+            'url': 'https://example.test/sub',
+            'overwriteType': 'custom',
+          },
+        ],
+        'scripts': <Object>[],
+        'rules': <Object>[],
+        'links': <Object>[],
+        'proxyGroups': [
+          {
+            'profileId': 7,
+            'id': 70,
+            'name': 'Custom Group',
+            'type': 'select',
+            'proxies': ['DIRECT'],
+          },
+        ],
+        'config': {
+          'currentProfileId': 7,
+          'overrideDns': true,
+          'themeProps': <String, Object?>{},
+        },
+      };
+      final archive = Archive()
+        ..addFile(ArchiveFile.string('metadata.json', jsonEncode(metadata)))
+        ..addFile(ArchiveFile.string('profiles/7.yaml', 'proxies: []'));
+      final bytes = Uint8List.fromList(ZipEncoder().encode(archive));
+
+      final result = await UnifiedBackupService(
+        database: db,
+        paths: RestorePaths(
+          profilesDirectory: p.join(temp.path, 'profiles'),
+          scriptsDirectory: p.join(temp.path, 'scripts'),
+        ),
+      ).restoreBytes(bytes, override: true);
+
+      final restored = (await db.profilesDao.query().get()).single;
+      expect(restored.overwriteType, OverwriteType.custom);
+      expect(restored.autoUpdateDuration, const Duration(days: 1));
+      expect(
+        (await db.proxyGroupsDao.query(7).get()).single.name,
+        'Custom Group',
+      );
+      expect(result.config?.overrideDns, true);
+      expect(result.currentProfileId, 7);
+    },
+  );
+
+  test(
+    'standalone V1 restore does not replace the trusted Worker baseline',
+    () async {
+      final temp = await Directory.systemTemp.createTemp('standalone-v1-test-');
+      final db = Database(NativeDatabase.memory());
+      addTearDown(() async {
+        await db.close();
+        await temp.delete(recursive: true);
+      });
+      final bytes = const UnifiedV1Exporter().build(
+        UnifiedExportInput(
+          profiles: [
+            UnifiedExportProfile(
+              androidId: 7,
+              name: 'Standalone',
+              sourceUrl: 'https://source.example/standalone',
+              yaml: Uint8List.fromList(
+                utf8.encode('proxies:\n  - name: direct\n    type: direct\n'),
+              ),
+              updated: 0,
+              autoUpdate: true,
+              updateIntervalMinutes: 60,
+            ),
+          ],
+          currentAndroidId: 7,
+          generatorVersion: '1.0.0',
+          createdAt: DateTime.utc(2026, 7, 19),
+        ),
+      );
+      final snapshot = p.join(temp.path, 'unified', 'worker-v1.zip');
+      final result = await UnifiedBackupService(
+        database: db,
+        paths: RestorePaths(
+          profilesDirectory: p.join(temp.path, 'profiles'),
+          scriptsDirectory: p.join(temp.path, 'scripts'),
+          workerUnifiedArchivePath: snapshot,
+        ),
+      ).restoreBytes(bytes, override: true);
+
+      final restored = (await db.profilesDao.query().get()).single;
+      expect(result.currentProfileId, restored.id);
+      expect(restored.autoUpdate, isTrue);
+      expect(restored.url, 'https://source.example/standalone');
+      expect(File(snapshot).existsSync(), isFalse);
+    },
+  );
+}
+
+Uint8List _workerArchive({
+  String configYaml =
+      'mixed-port: 7890\nallow-lan: false\nmode: rule\nlog-level: info\n',
+  String? sourceType,
+}) {
+  final profile = utf8.encode('proxies: []\n');
+  final provider = utf8.encode('proxies: []\n');
+  final files = <String, List<int>>{
+    'config.yaml': utf8.encode(configYaml),
+    'verge.yaml': utf8.encode('{}\n'),
+    'profiles.yaml': utf8.encode('''
+current: R1234abcd
+items:
+  - uid: R1234abcd
+    type: remote
+    name: Example
+    file: R1234abcd.yaml
+    url: https://vault.example/config/example/fixed-token
+    option:
+      allow_auto_update: false
+      update_interval: 1440
+'''),
+    'profiles/R1234abcd.yaml': profile,
+    'providers/example/provider.yaml': provider,
+    'providers/example/profile.yaml': profile,
+    'providers/example/meta.json': utf8.encode(
+      jsonEncode({
+        if (sourceType != null) 'distribution': {'sourceType': sourceType},
+      }),
+    ),
+  };
+  final manifestFiles = <String, Object?>{
+    for (final entry in files.entries)
+      entry.key: {
+        'sha256': sha256.convert(entry.value).toString(),
+        'contentLength': entry.value.length,
+        'required':
+            entry.key == 'config.yaml' ||
+            entry.key == 'verge.yaml' ||
+            entry.key == 'profiles.yaml' ||
+            entry.key.startsWith('profiles/'),
+      },
+  };
+  final manifest = {
+    'format': 'mihomo-unified-backup',
+    'formatVersion': 1,
+    'archiveType': 'unified-subscription-archive',
+    'createdAt': '2026-07-15T00:00:00Z',
+    'generator': 'worker',
+    'generatorVersion': '1.0.0',
+    'publicBaseUrl': 'https://vault.example',
+    'mainConfig': {
+      'configId': 'main',
+      'versionId': 'v1',
+      'name': 'Main',
+      'sourceSha256': '1' * 64,
+    },
+    'airports': [
+      {
+        'slug': 'example',
+        'subscriptionId': 'subscription',
+        'name': 'Example',
+        'profileUid': 'R1234abcd',
+        'versionId': 'v1',
+        'nodeCount': 0,
+        'providerSha256': sha256.convert(provider).toString(),
+        'profileSha256': sha256.convert(profile).toString(),
+      },
+    ],
+    'files': manifestFiles,
+  };
+  final archive = Archive();
+  for (final entry in files.entries) {
+    archive.addFile(ArchiveFile.bytes(entry.key, entry.value));
+  }
+  archive.addFile(ArchiveFile.string('manifest.json', jsonEncode(manifest)));
+  return Uint8List.fromList(ZipEncoder().encode(archive));
+}

@@ -1,0 +1,105 @@
+import 'package:flutter/material.dart';
+
+import 'soft_os_metrics.dart';
+import 'surge_theme_extension.dart';
+
+class SurgeStatusButton extends StatelessWidget {
+  const SurgeStatusButton({
+    super.key,
+    required this.isActive,
+    required this.activeLabel,
+    required this.inactiveLabel,
+    this.label,
+    this.onPressed,
+    this.loading = false,
+    this.compact = false,
+    this.activeIcon,
+    this.inactiveIcon,
+    this.activeColor,
+    this.inactiveColor,
+    this.height,
+    this.horizontalPadding,
+    this.minWidth,
+    this.textStyle,
+    this.scaleMetrics = true,
+  });
+
+  final bool isActive;
+  final String? label;
+  final String activeLabel;
+  final String inactiveLabel;
+  final VoidCallback? onPressed;
+  final bool loading;
+  final bool compact;
+  final IconData? activeIcon;
+  final IconData? inactiveIcon;
+  final Color? activeColor;
+  final Color? inactiveColor;
+  final double? height;
+  final double? horizontalPadding;
+  final double? minWidth;
+  final TextStyle? textStyle;
+  final bool scaleMetrics;
+
+  @override
+  Widget build(BuildContext context) {
+    final surge = SurgeTheme.of(context);
+    final metrics = SoftOsMetrics.of(context);
+    double resolveSize(double value) =>
+        scaleMetrics ? metrics.value(value) : value;
+    final background = isActive
+        ? activeColor ?? surge.green
+        : inactiveColor ?? surge.primary;
+    final text = label ?? (isActive ? activeLabel : inactiveLabel);
+    final icon = isActive ? activeIcon : inactiveIcon;
+    final effectiveHeight = resolveSize(height ?? (compact ? 34 : 40));
+
+    return FilledButton(
+      onPressed: loading ? null : onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: background,
+        disabledBackgroundColor: background.withValues(alpha: 0.55),
+        foregroundColor: surge.onPrimary,
+        disabledForegroundColor: surge.onPrimary.withValues(alpha: 0.8),
+        minimumSize: Size(
+          resolveSize(minWidth ?? (compact ? 0 : 96)),
+          effectiveHeight,
+        ),
+        maximumSize: Size(double.infinity, effectiveHeight),
+        padding: EdgeInsets.symmetric(
+          horizontal: resolveSize(horizontalPadding ?? (compact ? 12 : 16)),
+          vertical: 0,
+        ),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(surge.radii.button),
+        ),
+        alignment: Alignment.center,
+        textStyle: textStyle ?? context.typography.controlLabel,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (loading) ...[
+            SizedBox.square(
+              dimension: resolveSize(compact ? 13 : 15),
+              child: CircularProgressIndicator(
+                color: surge.onPrimary,
+                strokeWidth: 2,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ] else if (icon != null) ...[
+            Icon(icon, size: resolveSize(compact ? 14 : 16)),
+            SizedBox(width: resolveSize(6)),
+          ],
+          Text(
+            text,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+}

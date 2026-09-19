@@ -1,0 +1,142 @@
+import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/state.dart';
+import 'package:fl_clash/widgets/surge/surge.dart';
+import 'package:fl_clash/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'surge_dashboard_card.dart';
+
+class NetworkDetection extends ConsumerStatefulWidget {
+  const NetworkDetection({super.key});
+
+  @override
+  ConsumerState<NetworkDetection> createState() => _NetworkDetectionState();
+}
+
+class _NetworkDetectionState extends ConsumerState<NetworkDetection> {
+  String _countryCodeToEmoji(String countryCode) {
+    final String code = countryCode.toUpperCase();
+    if (code.length != 2) {
+      return countryCode;
+    }
+    final int firstLetter = code.codeUnitAt(0) - 0x41 + 0x1F1E6;
+    final int secondLetter = code.codeUnitAt(1) - 0x41 + 0x1F1E6;
+    return String.fromCharCode(firstLetter) + String.fromCharCode(secondLetter);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final appLocalizations = context.appLocalizations;
+    final surge = SurgeTheme.of(context);
+    final isStart = ref.watch(isStartProvider);
+    final ipInfo = ref.watch(networkDetectionProvider.select((s) => s.ipInfo));
+    final isLoading = ref.watch(
+      networkDetectionProvider.select((s) => s.isLoading),
+    );
+    final hasChecked = ref.watch(
+      networkDetectionProvider.select((s) => s.hasChecked),
+    );
+    final isForeground = ref.watch(appForegroundProvider);
+    final isDashboardActive = ref.watch(
+      currentPageLabelProvider.select((l) => l == PageLabel.dashboard),
+    );
+    final shouldAnimate = isForeground && isDashboardActive && isLoading;
+    final emojiTextStyle = context.typography.metric.copyWith(
+      fontFamily: FontFamily.twEmoji.value,
+    );
+
+    return SizedBox(
+      height: getWidgetHeight(1),
+      child: SurgeDashboardCard(
+        title: appLocalizations.networkDetection,
+        subtitle: appLocalizations.network,
+        icon: SurgeIcons.networkCheck,
+        iconColor: isStart ? surge.primary : surge.inactive,
+        height: getWidgetHeight(1),
+        trailing: SizedBox.square(
+          dimension: 28,
+          child: IconButton(
+            padding: EdgeInsets.zero,
+            visualDensity: VisualDensity.compact,
+            onPressed: () {
+              globalState.showMessage(
+                title: appLocalizations.tip,
+                message: TextSpan(text: appLocalizations.detectionTip),
+                cancelable: false,
+              );
+            },
+            icon: Icon(SurgeIcons.info, size: 17, color: surge.textSecondary),
+          ),
+        ),
+        child: FadeThroughBox(
+          child: ipInfo != null
+              ? Row(
+                  key: const ValueKey('network-ok'),
+                  children: [
+                    Text(
+                      _countryCodeToEmoji(ipInfo.countryCode),
+                      style: emojiTextStyle,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        ipInfo.ip,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.typography.dashboardDetectionValue
+                            .copyWith(color: surge.textPrimary),
+                      ),
+                    ),
+                  ],
+                )
+              : isLoading
+              ? TickerMode(
+                  enabled: shouldAnimate,
+                  child: RepaintBoundary(
+                    child: Align(
+                      key: const ValueKey('network-loading'),
+                      alignment: Alignment.centerLeft,
+                      child: Row(
+                        children: [
+                          SizedBox.square(
+                            dimension: 14,
+                            child: CommonCircleLoading(
+                              color: surge.primary,
+                              active: shouldAnimate,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              appLocalizations.loading,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.typography.supporting.copyWith(
+                                color: surge.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              : hasChecked
+              ? Text(
+                  key: const ValueKey('network-timeout'),
+                  appLocalizations.timeout,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.typography.controlLabel.copyWith(
+                    color: surge.red.withValues(alpha: 0.82),
+                  ),
+                )
+              : const SizedBox.shrink(key: ValueKey('network-idle')),
+        ),
+      ),
+    );
+  }
+}

@@ -1,0 +1,137 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
+
+plugins {
+    id("com.android.application")
+    id("kotlin-android")
+    id("dev.flutter.flutter-gradle-plugin")
+}
+
+val localPropertiesFile = rootProject.file("local.properties")
+val localProperties = Properties().apply {
+    if (localPropertiesFile.exists()) {
+        localPropertiesFile.inputStream().use { load(it) }
+    }
+}
+
+val mStoreFile: File = file("keystore.jks")
+val mStorePassword: String? = localProperties.getProperty("storePassword")
+val mKeyAlias: String? = localProperties.getProperty("keyAlias")
+val mKeyPassword: String? = localProperties.getProperty("keyPassword")
+val isRelease =
+    mStoreFile.exists() && mStorePassword != null && mKeyAlias != null && mKeyPassword != null
+val skipAbiFilters = providers.gradleProperty("slclashSkipAbiFilters")
+    .map { it.toBoolean() }
+    .getOrElse(false)
+val debugApplicationIdSuffix = providers.gradleProperty("slclashDebugApplicationIdSuffix")
+    .getOrElse(".dev")
+val debugAppLabel = providers.gradleProperty("slclashDebugAppLabel")
+    .getOrElse("机场钥仓 Debug")
+
+
+android {
+    namespace = "com.slclash.app"
+    compileSdk = libs.versions.compileSdk.get().toInt()
+    ndkVersion = libs.versions.ndkVersion.get()
+
+
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "com.slclash.app"
+        minSdk = flutter.minSdkVersion
+        targetSdk = libs.versions.targetSdk.get().toInt()
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
+        if (!skipAbiFilters) {
+            ndk {
+                abiFilters += listOf("arm64-v8a")
+            }
+        }
+    }
+
+    signingConfigs {
+        if (isRelease) {
+            create("release") {
+                storeFile = mStoreFile
+                storePassword = mStorePassword
+                keyAlias = mKeyAlias
+                keyPassword = mKeyPassword
+            }
+        }
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            if (!skipAbiFilters) {
+                // Some transitive AARs bundle every ABI and are not pruned by
+                // ndk.abiFilters on recent AGP versions. Keep the shipped APK
+                // aligned with this Android arm64-only fork.
+                excludes += setOf(
+                    "**/armeabi-v7a/*.so",
+                    "**/x86/*.so",
+                    "**/x86_64/*.so",
+                )
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            isMinifyEnabled = false
+            applicationIdSuffix = debugApplicationIdSuffix
+            manifestPlaceholders["debugAppLabel"] = debugAppLabel
+        }
+
+        getByName("profile") {
+            applicationIdSuffix = ".profile"
+            signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            isShrinkResources = false
+            manifestPlaceholders["profileAppLabel"] = "机场钥仓 Profile"
+        }
+
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            if (isRelease) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+                applicationIdSuffix = ".dev"
+            }
+
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            )
+        }
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
+}
+
+flutter {
+    source = "../.."
+}
+
+
+dependencies {
+    implementation(project(":service"))
+    implementation(project(":common"))
+    implementation(libs.androidx.core)
+    implementation(libs.core.splashscreen)
+    implementation(libs.gson)
+    testImplementation(kotlin("test-junit"))
+    implementation(libs.smali.dexlib2) {
+        exclude(group = "com.google.guava", module = "guava")
+    }
+}

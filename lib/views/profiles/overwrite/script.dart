@@ -1,0 +1,195 @@
+// ignore_for_file: deprecated_member_use
+
+import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/providers/providers.dart';
+import 'package:fl_clash/views/config/scripts.dart';
+import 'package:fl_clash/widgets/surge/surge.dart';
+import 'package:fl_clash/widgets/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ScriptContent extends ConsumerWidget {
+  const ScriptContent({super.key});
+
+  void _handleChange(WidgetRef ref, int profileId, int scriptId) {
+    ref.read(profilesProvider.notifier).updateProfile(profileId, (state) {
+      return state.copyWith(
+        scriptId: state.scriptId == scriptId ? null : scriptId,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context, ref) {
+    final appLocalizations = context.appLocalizations;
+    final surge = SurgeTheme.of(context);
+    final profileId = ProfileIdProvider.of(context)!.profileId;
+    final scriptId = ref.watch(
+      profileProvider(profileId).select((state) => state?.scriptId),
+    );
+    final scripts = ref.watch(scriptsProvider).value ?? [];
+    return SliverMainAxisGroup(
+      slivers: [
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        SliverToBoxAdapter(
+          child: Column(
+            children: [
+              InfoHeader(info: Info(label: appLocalizations.overrideScript)),
+            ],
+          ),
+        ),
+        const SliverToBoxAdapter(child: SizedBox(height: 8)),
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: SurgeCard(
+              shadow: false,
+              padding: EdgeInsets.zero,
+              child: Column(
+                children: [
+                  if (scripts.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 16,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            SurgeIcons.codeOff,
+                            color: surge.textSecondary,
+                            size: 22,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              appLocalizations.nullTip(appLocalizations.script),
+                              style: context.typography.supporting.copyWith(
+                                color: surge.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    for (var index = 0; index < scripts.length; index++) ...[
+                      _ScriptOptionRow(
+                        label: scripts[index].label,
+                        selected: scripts[index].id == scriptId,
+                        onPressed: () {
+                          _handleChange(ref, profileId, scripts[index].id);
+                        },
+                      ),
+                      if (index != scripts.length - 1)
+                        Divider(height: 1, indent: 48, color: surge.separator),
+                    ],
+                  Divider(height: 1, color: surge.separator),
+                  _ConfigureScriptButton(
+                    label: appLocalizations.goToConfigureScript,
+                    onPressed: () {
+                      BaseNavigator.push(context, const ScriptsView());
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ScriptOptionRow extends StatelessWidget {
+  const _ScriptOptionRow({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final surge = SurgeTheme.of(context);
+    return SurgePressable(
+      onTap: onPressed,
+      scaleFeedback: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        child: Row(
+          children: [
+            SurgeSelectIndicator(selected: selected),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: context.typography.rowTitle.copyWith(
+                  color: selected ? surge.primary : surge.textPrimary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ConfigureScriptButton extends StatelessWidget {
+  const _ConfigureScriptButton({required this.label, required this.onPressed});
+
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final surge = SurgeTheme.of(context);
+    return SurgePressable(
+      onTap: onPressed,
+      scaleFeedback: false,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        child: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: surge.primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(surge.radii.input),
+              ),
+              child: Icon(
+                SurgeIcons.tune,
+                size: SurgeIconSize.compact,
+                color: surge.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: context.typography.rowTitle.copyWith(
+                  color: surge.textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Icon(
+              SurgeIcons.forward,
+              size: SurgeIconSize.inline,
+              color: surge.textSecondary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

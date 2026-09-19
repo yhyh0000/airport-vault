@@ -1,0 +1,644 @@
+import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/l10n/l10n.dart';
+import 'package:fl_clash/models/models.dart';
+import 'package:fl_clash/state.dart';
+import 'package:fl_clash/theme/typography/surge_typography.dart';
+import 'package:fl_clash/theme/typography/text_theme.dart';
+import 'package:fl_clash/views/profiles/media_check.dart';
+import 'package:fl_clash/widgets/surge/surge_theme_extension.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  group('MediaCheckCache', () {
+    test('health-only samples keep full unlock result and update HTTPS', () {
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final fullResult = MediaCheckResult(
+        name: 'JP01',
+        profileId: 7,
+        profileLabel: 'daily',
+        chatGPT: const MediaCheckItem(status: 'clean', region: 'JP'),
+        youTube: const MediaCheckItem(status: 'available', region: 'JP'),
+        https: const MediaHTTPSResult(delay: 80, success: 3, total: 3),
+        region: 'JP',
+        score: 7400,
+        checkedAt: now - 1000,
+      );
+      final healthResult = MediaCheckResult(
+        name: 'JP01',
+        profileId: 7,
+        profileLabel: 'daily',
+        chatGPT: const MediaCheckItem(status: 'skipped'),
+        youTube: const MediaCheckItem(status: 'skipped'),
+        https: const MediaHTTPSResult(delay: 92, success: 3, total: 3),
+        region: '',
+        score: 2400,
+        checkedAt: now,
+      );
+
+      final cache = const MediaCheckCache(entries: {})
+          .addResult(
+            key: '7::JP01',
+            profileId: 7,
+            profileLabel: 'daily',
+            proxyName: 'JP01',
+            result: fullResult,
+            mode: 'gpt',
+          )
+          .addResult(
+            key: '7::JP01',
+            profileId: 7,
+            profileLabel: 'daily',
+            proxyName: 'JP01',
+            result: fullResult,
+            mode: 'youtube',
+          )
+          .addHealthResult(
+            key: '7::JP01',
+            profileId: 7,
+            profileLabel: 'daily',
+            proxyName: 'JP01',
+            result: healthResult,
+          );
+
+      final entry = cache.entries['7::JP01']!;
+      expect(entry.samples, hasLength(1));
+      expect(entry.lastResult!.chatGPT.chatGPTCompactLabel, '解锁(JP)');
+      expect(entry.lastResult!.youTube.youtubeCompactLabel, '解锁(JP)');
+      expect(entry.lastResult!.https.delay, 92);
+      expect(entry.health.greenRate, 1);
+      expect(entry.health.greenStreak, 1);
+    });
+
+    test('stable low latency needs enough green history', () {
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      MediaHealthSample sample(int offset, int delay, bool green) {
+        return MediaHealthSample(
+          checkedAt: now + offset,
+          delay: delay,
+          green: green,
+          chatGPT: true,
+        );
+      }
+
+      final tooFresh = MediaHealthStats.fromSamples([
+        sample(1, 82, true),
+        sample(2, 88, true),
+      ]);
+      expect(tooFresh.isStableLowLatency, false);
+
+      final unstable = MediaHealthStats.fromSamples([
+        sample(1, 82, true),
+        sample(2, 88, false),
+        sample(3, 91, true),
+        sample(4, 94, true),
+      ]);
+      expect(unstable.isStableLowLatency, false);
+
+      final stable = MediaHealthStats.fromSamples([
+        sample(1, 82, true),
+        sample(2, 88, true),
+        sample(3, 91, true),
+      ]);
+      expect(stable.isStableLowLatency, true);
+
+      final slow = MediaHealthStats.fromSamples([
+        sample(1, 920, true),
+        sample(2, 950, true),
+        sample(3, 970, true),
+      ]);
+      expect(slow.isStableLowLatency, false);
+    });
+
+    test('health observation cools repeated bad nodes for 24h', () {
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      MediaCheckResult result(int offset, MediaHTTPSResult https) {
+        return MediaCheckResult(
+          name: 'JP01',
+          profileId: 7,
+          profileLabel: 'daily',
+          chatGPT: const MediaCheckItem(status: 'skipped'),
+          youTube: const MediaCheckItem(status: 'skipped'),
+          https: https,
+          region: '',
+          score: 0,
+          checkedAt: now + offset,
+        );
+      }
+
+      final cache = const MediaCheckCache(entries: {})
+          .addHealthResult(
+            key: '7::JP01',
+            profileId: 7,
+            profileLabel: 'daily',
+            proxyName: 'JP01',
+            result: result(
+              1,
+              const MediaHTTPSResult(delay: -1, success: 0, total: 3),
+            ),
+          )
+          .addHealthResult(
+            key: '7::JP01',
+            profileId: 7,
+            profileLabel: 'daily',
+            proxyName: 'JP01',
+            result: result(
+              2,
+              const MediaHTTPSResult(delay: -1, success: 0, total: 3),
+            ),
+          )
+          .addHealthResult(
+            key: '7::JP01',
+            profileId: 7,
+            profileLabel: 'daily',
+            proxyName: 'JP01',
+            result: result(
+              3,
+              const MediaHTTPSResult(delay: -1, success: 0, total: 3),
+            ),
+          );
+
+      final entry = cache.entries['7::JP01']!;
+      expect(entry.observeBadStreak, 3);
+      expect(entry.observeLastReason, 'timeout');
+      expect(entry.isObservationCoolingDown(), true);
+      expect(
+        entry.observeCooldownUntil,
+        now + 3 + observeCooldownDuration.inMilliseconds,
+      );
+
+      final recovered = cache.addHealthResult(
+        key: '7::JP01',
+        profileId: 7,
+        profileLabel: 'daily',
+        proxyName: 'JP01',
+        result: result(
+          4,
+          const MediaHTTPSResult(delay: 120, success: 3, total: 3),
+        ),
+      );
+      final recoveredEntry = recovered.entries['7::JP01']!;
+      expect(recoveredEntry.observeBadStreak, 0);
+      expect(recoveredEntry.observeCooldownUntil, 0);
+      expect(recoveredEntry.isObservationCoolingDown(), false);
+    });
+  });
+
+  group('profile proxy resolver', () {
+    test('extracts real proxies from runtime ProxiesData', () {
+      final proxies = getLeafProxiesFromProxiesData(
+        const ProxiesData(
+          all: ['GLOBAL', 'American'],
+          proxies: {
+            'DIRECT': {'name': 'DIRECT', 'type': 'Direct'},
+            'PASS-RULE': {'name': 'PASS-RULE', 'type': 'PassRule'},
+            'GLOBAL': {'name': 'GLOBAL', 'type': 'Selector'},
+            'American': {'name': 'American', 'type': 'Selector'},
+            'Japan': {'name': 'Japan', 'type': 'URLTest'},
+            'YouTube 直连': {'name': 'YouTube 直连', 'type': 'Vless'},
+            'Netflix Direct': {'name': 'Netflix Direct', 'type': 'Trojan'},
+            'HK01': {'name': 'HK01', 'type': 'Vless'},
+            'US01': {'name': 'US01', 'type': 'Trojan'},
+            'Provider01': {'name': 'Provider01', 'type': 'Shadowsocks'},
+          },
+        ),
+      );
+
+      expect(proxies.map((proxy) => proxy.name), [
+        'HK01',
+        'US01',
+        'Provider01',
+      ]);
+    });
+
+    test('loads active profile from runtime and keeps offline order', () async {
+      var runtimeCalls = 0;
+      var resolverCalls = 0;
+
+      final proxies = await loadProfileLeafProxies(
+        profileId: 1,
+        currentProfileId: 1,
+        runtimeLoader: () async {
+          runtimeCalls++;
+          return const [
+            Proxy(name: 'RuntimeExtra', type: 'Vless'),
+            Proxy(name: 'US01', type: 'Trojan'),
+            Proxy(name: 'HK01', type: 'Vless'),
+          ];
+        },
+        profileResolver: (_) async {
+          resolverCalls++;
+          return const [
+            Proxy(name: 'HK01', type: 'Vless'),
+            Proxy(name: 'US01', type: 'Trojan'),
+          ];
+        },
+      );
+
+      expect(proxies.map((proxy) => proxy.name), [
+        'HK01',
+        'US01',
+        'RuntimeExtra',
+      ]);
+      expect(runtimeCalls, 1);
+      expect(resolverCalls, 1);
+    });
+
+    test('falls back to offline resolver when active runtime fails', () async {
+      var resolverCalls = 0;
+
+      final proxies = await loadProfileLeafProxies(
+        profileId: 1,
+        currentProfileId: 1,
+        runtimeLoader: () async => throw StateError('runtime unavailable'),
+        profileResolver: (_) async {
+          resolverCalls++;
+          return const [Proxy(name: 'Offline01', type: 'Trojan')];
+        },
+      );
+
+      expect(proxies.map((proxy) => proxy.name), ['Offline01']);
+      expect(resolverCalls, 1);
+    });
+
+    test('collects computed group targets with test URL and proxy dedupe', () {
+      final targets = collectComputedGroupDelayTargets(
+        defaultTestUrl: 'https://default.test/generate_204',
+        groups: const [
+          Group(
+            name: 'AutoA',
+            type: GroupType.URLTest,
+            testUrl: 'https://group.test/generate_204',
+            all: [
+              Proxy(name: 'HK01', type: 'Vless'),
+              Proxy(name: 'HK01', type: 'Vless'),
+              Proxy(name: 'DIRECT', type: 'Direct'),
+              Proxy(name: 'Nested', type: 'Selector'),
+            ],
+          ),
+          Group(
+            name: 'AutoB',
+            type: GroupType.Fallback,
+            all: [
+              Proxy(name: 'HK01', type: 'Vless'),
+              Proxy(name: 'US01', type: 'Trojan'),
+            ],
+          ),
+          Group(
+            name: 'Manual',
+            type: GroupType.Selector,
+            all: [Proxy(name: 'SG01', type: 'Vless')],
+          ),
+        ],
+      );
+
+      expect(
+        targets.map((target) => '${target.testUrl}::${target.proxy.name}'),
+        [
+          'https://group.test/generate_204::HK01',
+          'https://default.test/generate_204::HK01',
+          'https://default.test/generate_204::US01',
+        ],
+      );
+    });
+
+    test('warms computed group delays and records failed targets', () async {
+      final delays = <Delay>[];
+      final calls = <String>[];
+
+      await warmUpComputedGroupDelays(
+        concurrency: 1,
+        defaultTestUrl: 'https://default.test/generate_204',
+        groups: const [
+          Group(
+            name: 'Auto',
+            type: GroupType.URLTest,
+            all: [
+              Proxy(name: 'OK01', type: 'Vless'),
+              Proxy(name: 'BAD01', type: 'Trojan'),
+            ],
+          ),
+        ],
+        delayLoader: (url, proxyName) async {
+          calls.add('$url::$proxyName');
+          if (proxyName == 'BAD01') {
+            throw StateError('timeout');
+          }
+          return Delay(url: url, name: proxyName, value: 88);
+        },
+        onDelay: delays.add,
+      );
+
+      expect(calls, [
+        'https://default.test/generate_204::OK01',
+        'https://default.test/generate_204::BAD01',
+      ]);
+      expect(delays.map((delay) => '${delay.name}:${delay.value}'), [
+        'OK01:0',
+        'OK01:88',
+        'BAD01:0',
+        'BAD01:-1',
+      ]);
+    });
+
+    test('stale warm-up does not launch another delay batch', () async {
+      var active = true;
+      final calls = <String>[];
+
+      await warmUpComputedGroupDelays(
+        concurrency: 1,
+        defaultTestUrl: 'https://default.test/generate_204',
+        groups: const [
+          Group(
+            name: 'Auto',
+            type: GroupType.URLTest,
+            all: [
+              Proxy(name: 'A', type: 'Vless'),
+              Proxy(name: 'B', type: 'Vless'),
+              Proxy(name: 'C', type: 'Vless'),
+            ],
+          ),
+        ],
+        shouldContinue: () => active,
+        delayLoader: (url, proxyName) async {
+          calls.add(proxyName);
+          active = false;
+          return Delay(url: url, name: proxyName, value: 80);
+        },
+        onDelay: (_) {},
+      );
+
+      expect(calls, ['A']);
+    });
+  });
+
+  group('MediaCheckObserveSettings', () {
+    test('normalizes unsupported intervals', () {
+      final settings = MediaCheckObserveSettings.fromJson({
+        'enabled': true,
+        'interval-minutes': 17,
+        'last-run-at': 123,
+      });
+
+      expect(settings.enabled, true);
+      expect(settings.intervalMinutes, 60);
+      expect(settings.intervalLabel, '1h');
+      expect(settings.lastRunAt, 123);
+    });
+
+    test('allows two minute interval in debug builds', () {
+      expect(MediaCheckObserveSettings.intervalOptions, contains(2));
+      final settings = MediaCheckObserveSettings.fromJson({
+        'enabled': true,
+        'interval-minutes': 2,
+      });
+      expect(settings.intervalMinutes, 2);
+      expect(settings.intervalLabel, '2m');
+    });
+  });
+
+  group('MediaCheckItem labels', () {
+    test('collapses negative unlock states into timeout and blocked', () {
+      expect(
+        const MediaCheckItem(status: 'clean', region: 'JP').chatGPTCompactLabel,
+        '解锁(JP)',
+      );
+      expect(const MediaCheckItem(status: 'failed').chatGPTCompactLabel, '超时');
+      expect(const MediaCheckItem(status: 'timeout').chatGPTCompactLabel, '超时');
+      expect(const MediaCheckItem(status: 'unknown').chatGPTCompactLabel, '超时');
+      expect(
+        const MediaCheckItem(
+          status: 'unsupported',
+          region: 'HK',
+        ).chatGPTCompactLabel,
+        '阻断',
+      );
+      expect(
+        const MediaCheckItem(status: 'disallowed_isp').chatGPTCompactLabel,
+        '阻断',
+      );
+      expect(const MediaCheckItem(status: 'blocked').chatGPTCompactLabel, '阻断');
+
+      expect(
+        const MediaCheckItem(
+          status: 'unavailable',
+          region: 'HK',
+        ).youtubeCompactLabel,
+        '送中',
+      );
+      expect(const MediaCheckItem(status: 'failed').youtubeCompactLabel, '超时');
+      expect(const MediaCheckItem(status: 'timeout').youtubeCompactLabel, '超时');
+      expect(const MediaCheckItem(status: 'unknown').youtubeCompactLabel, '超时');
+    });
+  });
+
+  group('media result sorting', () {
+    MediaCheckResult result({
+      required String name,
+      required MediaCheckItem chatGPT,
+      required MediaCheckItem youTube,
+      required int delay,
+    }) {
+      return MediaCheckResult(
+        name: name,
+        chatGPT: chatGPT,
+        youTube: youTube,
+        https: MediaHTTPSResult(delay: delay, success: 3, total: 3),
+        region: chatGPT.region,
+        score: 0,
+        checkedAt: 1,
+      );
+    }
+
+    test('GPT unlocked group sorts valid low latency first', () {
+      final fast = result(
+        name: 'JP-fast',
+        chatGPT: const MediaCheckItem(status: 'clean', region: 'JP'),
+        youTube: const MediaCheckItem(status: 'skipped'),
+        delay: 80,
+      );
+      final slow = result(
+        name: 'SG-slow',
+        chatGPT: const MediaCheckItem(status: 'clean', region: 'SG'),
+        youTube: const MediaCheckItem(status: 'skipped'),
+        delay: 320,
+      );
+
+      expect(
+        compareMediaResultTiebreaker(
+          mode: 'gpt',
+          aResult: fast,
+          aDelay: fast.https.normalizedDelay,
+          aName: fast.name,
+          bResult: slow,
+          bDelay: slow.https.normalizedDelay,
+          bName: slow.name,
+        ),
+        lessThan(0),
+      );
+    });
+
+    test('GPT blocked group keeps non-latency ordering', () {
+      final alphabeticalFirst = result(
+        name: 'A-slow',
+        chatGPT: const MediaCheckItem(status: 'blocked'),
+        youTube: const MediaCheckItem(status: 'skipped'),
+        delay: 400,
+      );
+      final fast = result(
+        name: 'B-fast',
+        chatGPT: const MediaCheckItem(status: 'blocked'),
+        youTube: const MediaCheckItem(status: 'skipped'),
+        delay: 40,
+      );
+
+      expect(
+        compareMediaResultTiebreaker(
+          mode: 'gpt',
+          aResult: alphabeticalFirst,
+          aDelay: alphabeticalFirst.https.normalizedDelay,
+          aName: alphabeticalFirst.name,
+          bResult: fast,
+          bDelay: fast.https.normalizedDelay,
+          bName: fast.name,
+        ),
+        lessThan(0),
+      );
+    });
+
+    test('YouTube CN-route group alone sorts by latency', () {
+      final slowCN = result(
+        name: 'A-slow-CN',
+        chatGPT: const MediaCheckItem(status: 'skipped'),
+        youTube: const MediaCheckItem(status: 'unavailable', region: 'US'),
+        delay: 420,
+      );
+      final fastCN = result(
+        name: 'B-fast-CN',
+        chatGPT: const MediaCheckItem(status: 'skipped'),
+        youTube: const MediaCheckItem(status: 'cn_confirmed', region: 'CN'),
+        delay: 60,
+      );
+      final availableA = result(
+        name: 'A-slow-available',
+        chatGPT: const MediaCheckItem(status: 'skipped'),
+        youTube: const MediaCheckItem(status: 'available', region: 'JP'),
+        delay: 420,
+      );
+      final availableB = result(
+        name: 'B-fast-available',
+        chatGPT: const MediaCheckItem(status: 'skipped'),
+        youTube: const MediaCheckItem(status: 'available', region: 'SG'),
+        delay: 60,
+      );
+
+      expect(
+        compareMediaResultTiebreaker(
+          mode: 'youtube',
+          aResult: fastCN,
+          aDelay: fastCN.https.normalizedDelay,
+          aName: fastCN.name,
+          bResult: slowCN,
+          bDelay: slowCN.https.normalizedDelay,
+          bName: slowCN.name,
+        ),
+        lessThan(0),
+      );
+      expect(
+        compareMediaResultTiebreaker(
+          mode: 'youtube',
+          aResult: availableA,
+          aDelay: availableA.https.normalizedDelay,
+          aName: availableA.name,
+          bResult: availableB,
+          bDelay: availableB.https.normalizedDelay,
+          bName: availableB.name,
+        ),
+        lessThan(0),
+      );
+    });
+  });
+
+  group('ProfileMediaCheckView', () {
+    testWidgets('renders control card and fixed filter grid', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final container = ProviderContainer();
+      globalState.container = container;
+      addTearDown(container.dispose);
+      final profiles = [
+        const Profile(
+          id: 1,
+          label: 'Daily',
+          autoUpdateDuration: Duration(hours: 24),
+        ),
+        const Profile(
+          id: 2,
+          label: 'AI',
+          autoUpdateDuration: Duration(hours: 24),
+        ),
+      ];
+
+      Future<Map<String, dynamic>> loadConfig(int profileId) async {
+        return {
+          'proxies': [
+            {
+              'name': profileId == 1 ? '🇯🇵 JP01' : '🇸🇬 SG01',
+              'type': 'Vless',
+            },
+            if (profileId == 1) {'name': '🇭🇰 HK01', 'type': 'Vless'},
+          ],
+        };
+      }
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: () {
+              final textTheme = buildSlclashTextTheme();
+              return ThemeData(
+                textTheme: textTheme,
+                extensions: [
+                  SurgeTheme.light(),
+                  SurgeTypography.fromTextTheme(textTheme),
+                ],
+              );
+            }(),
+            localizationsDelegates: const [
+              AppLocalizations.delegate,
+              GlobalMaterialLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+            ],
+            supportedLocales: AppLocalizations.delegate.supportedLocales,
+            locale: const Locale('zh', 'CN'),
+            home: ProfileMediaCheckView(
+              profiles: profiles,
+              initialProfile: profiles.first,
+              configLoader: loadConfig,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('节点体检'), findsOneWidget);
+      expect(find.byKey(const Key('media-check-header-icon')), findsOneWidget);
+      expect(
+        tester.getSize(find.byKey(const Key('media-check-run-button'))),
+        const Size(48, 48),
+      );
+      expect(find.text('Daily'), findsOneWidget);
+      expect(find.text('GPT'), findsWidgets);
+      expect(find.text('YouTube'), findsWidgets);
+      expect(find.text('健康'), findsWidgets);
+      expect(find.text('检测结果会展示在这里'), findsOneWidget);
+    });
+  });
+}

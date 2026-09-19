@@ -1,0 +1,204 @@
+import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/providers/config.dart';
+import 'package:fl_clash/widgets/surge/surge.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+class ProxiesSetting extends ConsumerWidget {
+  const ProxiesSetting({super.key});
+
+  String _sortLabel(BuildContext context, ProxiesSortType type) {
+    final appLocalizations = context.appLocalizations;
+    return switch (type) {
+      ProxiesSortType.none => appLocalizations.defaultText,
+      ProxiesSortType.delay => appLocalizations.delay,
+      ProxiesSortType.name => appLocalizations.name,
+    };
+  }
+
+  IconData _sortIcon(ProxiesSortType type) {
+    return switch (type) {
+      ProxiesSortType.none => SurgeIcons.sort,
+      ProxiesSortType.delay => SurgeIcons.networkPing,
+      ProxiesSortType.name => SurgeIcons.sortAlphabetically,
+    };
+  }
+
+  String _iconStyleLabel(BuildContext context, ProxiesIconStyle style) {
+    final appLocalizations = context.appLocalizations;
+    return switch (style) {
+      ProxiesIconStyle.standard => appLocalizations.standard,
+      ProxiesIconStyle.none => appLocalizations.none,
+      ProxiesIconStyle.icon => appLocalizations.onlyIcon,
+    };
+  }
+
+  IconData _iconStyleIcon(ProxiesIconStyle style) {
+    return switch (style) {
+      ProxiesIconStyle.standard => SurgeIcons.agenda,
+      ProxiesIconStyle.none => SurgeIcons.alignLeft,
+      ProxiesIconStyle.icon => SurgeIcons.apps,
+    };
+  }
+
+  void _setListStyle(WidgetRef ref) {
+    ref.read(proxiesStyleSettingProvider.notifier).update((state) {
+      return state.copyWith(type: ProxiesType.list);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appLocalizations = context.appLocalizations;
+    final state = ref.watch(proxiesStyleSettingProvider);
+
+    if (state.type != ProxiesType.list) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _setListStyle(ref));
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SettingSection(
+            title: appLocalizations.sort,
+            children: [
+              for (final item in ProxiesSortType.values)
+                _SettingOption(
+                  icon: _sortIcon(item),
+                  label: _sortLabel(context, item),
+                  selected: state.sortType == item,
+                  onTap: () {
+                    ref.read(proxiesStyleSettingProvider.notifier).update((
+                      state,
+                    ) {
+                      return state.copyWith(sortType: item);
+                    });
+                  },
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _SettingSection(
+            title: appLocalizations.iconStyle,
+            children: [
+              for (final item in ProxiesIconStyle.values)
+                _SettingOption(
+                  icon: _iconStyleIcon(item),
+                  label: _iconStyleLabel(context, item),
+                  selected: state.iconStyle == item,
+                  onTap: () {
+                    ref.read(proxiesStyleSettingProvider.notifier).update((
+                      state,
+                    ) {
+                      return state.copyWith(iconStyle: item);
+                    });
+                  },
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingSection extends StatelessWidget {
+  const _SettingSection({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    final surge = SurgeTheme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 0, 4, 8),
+          child: Row(
+            children: [
+              Text(
+                title,
+                style: context.typography.rowTitle.copyWith(
+                  color: surge.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        SurgeCard(
+          padding: EdgeInsets.zero,
+          borderRadius: 18,
+          shadow: true,
+          child: Column(children: children),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingOption extends StatelessWidget {
+  const _SettingOption({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final surge = SurgeTheme.of(context);
+    final foreground = selected ? surge.textPrimary : surge.textSecondary;
+    final selectedFill = surge.selectedFill;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          child: Row(
+            children: [
+              Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: selected ? selectedFill : surge.fill,
+                  borderRadius: BorderRadius.circular(surge.radii.input),
+                ),
+                child: Icon(icon, size: 17, color: foreground),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: context.typography.rowTitle.copyWith(
+                    color: surge.textPrimary,
+                  ),
+                ),
+              ),
+              SurgeSelectIndicator(
+                selected: selected,
+                size: 18,
+                iconSize: 12,
+                showCheck: false,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

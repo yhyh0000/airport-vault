@@ -1,0 +1,546 @@
+package com.follow.clash.plugins
+
+import android.Manifest
+import android.app.Activity
+import android.app.ActivityManager
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.ComponentInfo
+import android.content.pm.PackageManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.VpnService
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.ContextCompat.getSystemService
+import androidx.core.content.FileProvider
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
+import androidx.core.net.toUri
+import com.android.tools.smali.dexlib2.dexbacked.DexBackedDexFile
+import com.slclash.app.R
+import com.follow.clash.common.Components
+import com.follow.clash.common.GlobalState
+import com.follow.clash.common.QuickAction
+import com.follow.clash.common.quickIntent
+import com.follow.clash.getPackageIconPath
+import com.follow.clash.models.Package
+import com.follow.clash.showToast
+import com.google.gson.Gson
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.embedding.engine.plugins.activity.ActivityAware
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
+import io.flutter.plugin.common.MethodCall
+import io.flutter.plugin.common.MethodChannel
+import io.flutter.plugin.common.MethodChannel.Result
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
+import java.io.File
+import java.lang.ref.WeakReference
+import java.util.zip.ZipFile
+
+class AppPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, ActivityAware {
+
+    companion object {
+        const val VPN_PERMISSION_REQUEST_CODE = 1001
+        const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1002
+    }
+
+    private var activityRef: WeakReference<Activity>? = null
+
+    private lateinit var channel: MethodChannel
+
+    private lateinit var scope: CoroutineScope
+
+    private var vpnPrepareCallback: (suspend (Boolean) -> Unit)? = null
+
+    private var requestNotificationCallback: (() -> Unit)? = null
+
+    private val packages = mutableListOf<Package>()
+
+    private val skipPrefixList = listOf(
+        "com.google",
+        "com.android.chrome",
+        "com.android.vending",
+        "com.microsoft",
+        "com.apple",
+        "com.zhiliaoapp.musically", // Banned by China
+    )
+
+    private val chinaAppPrefixList = listOf(
+        "com.tencent",
+        "com.alibaba",
+        "com.umeng",
+        "com.qihoo",
+        "com.ali",
+        "com.alipay",
+        "com.amap",
+        "com.sina",
+        "com.weibo",
+        "com.vivo",
+        "com.xiaomi",
+        "com.huawei",
+        "com.taobao",
+        "com.secneo",
+        "s.h.e.l.l",
+        "com.stub",
+        "com.kiwisec",
+        "com.secshell",
+        "com.wrapper",
+        "cn.securitystack",
+        "com.mogosec",
+        "com.secoen",
+        "com.netease",
+        "com.mx",
+        "com.qq.e",
+        "com.baidu",
+        "com.bytedance",
+        "com.bugly",
+        "com.miui",
+        "com.oppo",
+        "com.coloros",
+        "com.iqoo",
+        "com.meizu",
+        "com.gionee",
+        "cn.nubia",
+        "com.oplus",
+        "andes.oplus",
+        "com.unionpay",
+        "cn.wps"
+    )
+
+    private val chinaAppRegex by lazy {
+        ("(" + chinaAppPrefixList.joinToString("|").replace(".", "\\.") + ").*").toRegex()
+    }
+
+    private var isBlockNotification: Boolean = false
+
+    override fun onMethodCall(call: MethodCall, result: Result) {
+        when (call.method) {
+            "moveTaskToBack" -> {
+                activityRef?.get()?.moveTaskToBack(true)
+                result.success(true)
+            }
+
+            "wasUpdated" -> {
+                val packageInfo = GlobalState.application.packageManager.getPackageInfo(
+                    GlobalState.application.packageName,
+                    0
+                )
+                result.success(packageInfo.lastUpdateTime > packageInfo.firstInstallTime)
+            }
+
+            "updateExcludeFromRecents" -> {
+                val value = call.argument<Boolean>("value")
+                updateExcludeFromRecents(value)
+                result.success(true)
+            }
+
+            "initShortcuts" -> {
+                initShortcuts(call.arguments as String)
+                result.success(true)
+            }
+
+            "getPackages" -> {
+                scope.launch {
+                    result.success(getPackagesToJson())
+                }
+            }
+
+            "getChinaPackageNames" -> {
+                scope.launch {
+                    result.success(getChinaPackageNames())
+                }
+            }
+
+            "getPackageIcon" -> {
+                handleGetPackageIcon(call, result)
+            }
+
+            "tip" -> {
+                val message = call.argument<String>("message")
+                tip(message)
+                result.success(true)
+            }
+
+            "openAppSettings" -> {
+                result.success(openAppSettings())
+            }
+
+            "isScreenOn" -> {
+                result.success(isScreenOn())
+            }
+
+            "isPowerSaveMode" -> {
+                result.success(isPowerSaveMode())
+            }
+
+            "isActiveNetworkMetered" -> {
+                result.success(isActiveNetworkMetered())
+            }
+
+            "isActiveNetworkCellular" -> {
+                result.success(isActiveNetworkCellular())
+            }
+
+            "installApk" -> {
+                result.success(installApk(call.argument<String>("path")))
+            }
+
+            else -> {
+                result.notImplemented()
+            }
+        }
+    }
+
+    private fun handleGetPackageIcon(call: MethodCall, result: Result) {
+        scope.launch {
+            val packageName = call.argument<String>("packageName")
+            if (packageName == null) {
+                result.success("")
+                return@launch
+            }
+            val path = GlobalState.application.packageManager.getPackageIconPath(packageName)
+            result.success(path)
+        }
+    }
+
+    private fun initShortcuts(label: String) {
+        val shortcut = with(ShortcutInfoCompat.Builder(GlobalState.application, "toggle")) {
+            setShortLabel(label)
+            setIcon(
+                IconCompat.createWithResource(
+                    GlobalState.application,
+                    R.mipmap.ic_launcher_round,
+                )
+            )
+            setIntent(QuickAction.TOGGLE.quickIntent)
+            build()
+        }
+        ShortcutManagerCompat.setDynamicShortcuts(
+            GlobalState.application, listOf(shortcut)
+        )
+    }
+
+    private fun tip(message: String?) {
+        GlobalState.application.showToast(message)
+    }
+
+    private fun powerManager(): PowerManager? {
+        return getSystemService(GlobalState.application, PowerManager::class.java)
+    }
+
+    private fun isScreenOn(): Boolean {
+        return powerManager()?.isInteractive ?: true
+    }
+
+    private fun isPowerSaveMode(): Boolean {
+        return powerManager()?.isPowerSaveMode ?: false
+    }
+
+    private fun connectivityManager(): ConnectivityManager? {
+        return getSystemService(GlobalState.application, ConnectivityManager::class.java)
+    }
+
+    private fun isActiveNetworkMetered(): Boolean {
+        return try {
+            connectivityManager()?.isActiveNetworkMetered ?: true
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    private fun isActiveNetworkCellular(): Boolean {
+        return try {
+            val cm = connectivityManager() ?: return true
+            val network = cm.activeNetwork ?: return true
+            val caps = cm.getNetworkCapabilities(network) ?: return true
+            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    private fun openAppSettings(): Boolean {
+        return try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = "package:${GlobalState.application.packageName}".toUri()
+            }
+            activityRef?.get()?.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun installApk(path: String?): Boolean {
+        if (path.isNullOrEmpty()) return false
+        val activity = activityRef?.get() ?: return false
+        val apkFile = File(path)
+        if (!apkFile.exists()) return false
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val canInstall = GlobalState.application.packageManager.canRequestPackageInstalls()
+                if (!canInstall) {
+                    val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = "package:${GlobalState.application.packageName}".toUri()
+                    }
+                    activity.startActivity(settingsIntent)
+                    return false
+                }
+            }
+
+            val uri = FileProvider.getUriForFile(
+                GlobalState.application,
+                "${GlobalState.application.packageName}.fileprovider",
+                apkFile
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            activity.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun updateExcludeFromRecents(value: Boolean?) {
+        val am = getSystemService(GlobalState.application, ActivityManager::class.java)
+        val task = am?.appTasks?.firstOrNull {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                it.taskInfo.taskId == activityRef?.get()?.taskId
+            } else {
+                it.taskInfo.id == activityRef?.get()?.taskId
+            }
+        }
+
+        when (value) {
+            true -> task?.setExcludeFromRecents(value)
+            false -> task?.setExcludeFromRecents(value)
+            null -> task?.setExcludeFromRecents(false)
+        }
+    }
+
+
+    private fun getPackages(): List<Package> {
+        val packageManager = GlobalState.application.packageManager
+        if (packages.isNotEmpty()) return packages
+        packageManager?.getInstalledPackages(PackageManager.GET_META_DATA or PackageManager.GET_PERMISSIONS)
+            ?.filter {
+                it.packageName != GlobalState.application.packageName && it.packageName != "android"
+            }?.map {
+                Package(
+                    packageName = it.packageName,
+                    label = it.applicationInfo?.loadLabel(packageManager).toString(),
+                    system = (it.applicationInfo?.flags?.and(ApplicationInfo.FLAG_SYSTEM)) != 0,
+                    lastUpdateTime = it.lastUpdateTime,
+                    internet = it.requestedPermissions?.contains(Manifest.permission.INTERNET) == true
+                )
+            }?.let { packages.addAll(it) }
+        return packages
+    }
+
+    private suspend fun getPackagesToJson(): String {
+        return withContext(Dispatchers.Default) {
+            Gson().toJson(getPackages())
+        }
+    }
+
+    private suspend fun getChinaPackageNames(): String {
+        return withContext(Dispatchers.Default) {
+            val packages: List<String> =
+                getPackages().map { it.packageName }.filter { isChinaPackage(it) }
+            Gson().toJson(packages)
+        }
+    }
+
+    fun invokeRequestNotificationCallback() {
+        requestNotificationCallback?.invoke()
+        requestNotificationCallback = null
+    }
+
+    fun prepare(needPrepare: Boolean, callBack: (suspend (Boolean) -> Unit)) {
+        vpnPrepareCallback = callBack
+        if (!needPrepare) {
+            invokeVpnPrepareCallback(true)
+            return
+        }
+        val intent = VpnService.prepare(GlobalState.application)
+        if (intent != null) {
+            activityRef?.get()?.startActivityForResult(intent, VPN_PERMISSION_REQUEST_CODE)
+                ?: invokeVpnPrepareCallback(false)
+            return
+        }
+        invokeVpnPrepareCallback(true)
+    }
+
+    fun invokeVpnPrepareCallback(success: Boolean = true) {
+        GlobalState.launch {
+            vpnPrepareCallback?.invoke(success)
+            vpnPrepareCallback = null
+        }
+    }
+
+    suspend fun prepareVpnAwait(needPrepare: Boolean): Boolean =
+        suspendCancellableCoroutine { cont ->
+            prepare(needPrepare) { success ->
+                if (cont.isActive) cont.resume(success)
+            }
+        }
+
+    suspend fun requestNotificationsPermissionAwait(): Boolean =
+        suspendCancellableCoroutine { cont ->
+            requestNotificationsPermission {
+                if (cont.isActive) cont.resume(true)
+            }
+        }
+
+    fun requestNotificationsPermission(callBack: () -> Unit) {
+        requestNotificationCallback = callBack
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val permission = ContextCompat.checkSelfPermission(
+                GlobalState.application, Manifest.permission.POST_NOTIFICATIONS
+            )
+            if (permission == PackageManager.PERMISSION_GRANTED || isBlockNotification) {
+                invokeRequestNotificationCallback()
+                return
+            }
+            val activity = activityRef?.get()
+            if (activity == null) {
+                invokeRequestNotificationCallback()
+                return
+            }
+            ActivityCompat.requestPermissions(
+                activity,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                NOTIFICATION_PERMISSION_REQUEST_CODE
+            )
+            return
+        } else {
+            invokeRequestNotificationCallback()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isChinaPackage(packageName: String): Boolean {
+        val packageManager = GlobalState.application.packageManager ?: return false
+        skipPrefixList.forEach {
+            if (packageName == it || packageName.startsWith("$it.")) return false
+        }
+        val packageManagerFlags =
+            PackageManager.MATCH_UNINSTALLED_PACKAGES or PackageManager.GET_ACTIVITIES or PackageManager.GET_SERVICES or PackageManager.GET_RECEIVERS or PackageManager.GET_PROVIDERS
+        if (packageName.matches(chinaAppRegex)) {
+            return true
+        }
+        try {
+            val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(
+                    packageName, PackageManager.PackageInfoFlags.of(packageManagerFlags.toLong())
+                )
+            } else {
+                packageManager.getPackageInfo(
+                    packageName, packageManagerFlags
+                )
+            }
+            mutableListOf<ComponentInfo>().apply {
+                packageInfo.services?.let { addAll(it) }
+                packageInfo.activities?.let { addAll(it) }
+                packageInfo.receivers?.let { addAll(it) }
+                packageInfo.providers?.let { addAll(it) }
+            }.forEach {
+                if (it.name.matches(chinaAppRegex)) return true
+            }
+            packageInfo.applicationInfo?.publicSourceDir?.let {
+                ZipFile(File(it)).use {
+                    for (packageEntry in it.entries()) {
+                        if (!(packageEntry.name.startsWith("classes") && packageEntry.name.endsWith(
+                                ".dex"
+                            ))
+                        ) {
+                            continue
+                        }
+                        if (packageEntry.size > 15000000) {
+                            return true
+                        }
+                        val input = it.getInputStream(packageEntry).buffered()
+                        val dexFile = try {
+                            DexBackedDexFile.fromInputStream(null, input)
+                        } catch (e: Exception) {
+                            return false
+                        }
+                        for (clazz in dexFile.classes) {
+                            val clazzName =
+                                clazz.type.substring(1, clazz.type.length - 1).replace("/", ".")
+                                    .replace("$", ".")
+                            if (clazzName.matches(chinaAppRegex)) return true
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            return false
+        }
+        return false
+    }
+
+    override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
+        scope = CoroutineScope(Dispatchers.Default)
+        channel = MethodChannel(flutterPluginBinding.binaryMessenger, Components.APP_CHANNEL)
+        channel.setMethodCallHandler(this)
+    }
+
+    override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        channel.setMethodCallHandler(null)
+        scope.cancel()
+    }
+
+    override fun onAttachedToActivity(binding: ActivityPluginBinding) {
+        activityRef = WeakReference(binding.activity)
+        binding.addActivityResultListener(::onActivityResult)
+        binding.addRequestPermissionsResultListener(::onRequestPermissionsResultListener)
+    }
+
+    override fun onDetachedFromActivityForConfigChanges() {
+        activityRef = null
+    }
+
+    override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {
+        activityRef = WeakReference(binding.activity)
+    }
+
+    override fun onDetachedFromActivity() {
+        channel.invokeMethod("exit", null)
+        activityRef = null
+    }
+
+    private fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
+        if (requestCode == VPN_PERMISSION_REQUEST_CODE) {
+            invokeVpnPrepareCallback(resultCode == FlutterActivity.RESULT_OK)
+        }
+        return true
+    }
+
+    private fun onRequestPermissionsResultListener(
+        requestCode: Int, permissions: Array<String>, grantResults: IntArray
+    ): Boolean {
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            isBlockNotification = true
+        }
+        invokeRequestNotificationCallback()
+        return true
+    }
+}
