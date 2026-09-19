@@ -50,6 +50,8 @@ dependencies:
       ref: master
   flutter_svg: ^2.1.0
   flutter_cache_manager: ^3.4.1
+  flutter_secure_storage: ^9.2.4
+  webview_flutter: ^4.13.0
   crypto: ^3.0.3
   yaml_writer:
     git:
