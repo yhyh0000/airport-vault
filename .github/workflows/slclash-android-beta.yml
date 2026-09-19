@@ -201,7 +201,7 @@ jobs:
         run: flutter test test/theme/typography/typography_source_contract_test.dart
 
       - name: Verify airport adapter contracts
-        run: flutter test test/services/airport/airport_models_test.dart
+        run: flutter test test/services/airport
 
       - name: Verify Mihomo runtime config regression baseline
         run: |
