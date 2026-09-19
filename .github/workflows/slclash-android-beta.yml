@@ -287,8 +287,11 @@ jobs:
           CORE_BUILD_TIME="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 
           if [ -z "$MIHOMO_VERSION" ]; then
-            echo "Could not resolve Mihomo version from git tag."
-            exit 1
+            # The FlClash fork may publish a branch snapshot without a git
+            # tag. Keep the exact source commit in build metadata instead of
+            # blocking an otherwise reproducible APK build.
+            MIHOMO_VERSION="FlClash-${MIHOMO_COMMIT}"
+            echo "No Mihomo release tag found; using $MIHOMO_VERSION."
           fi
 
           MIHOMO_TAG="$MIHOMO_VERSION"
