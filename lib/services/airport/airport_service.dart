@@ -186,7 +186,14 @@ class AirportService {
     final response = await _request(session, '/api/v1/user/getSubscribe');
     if (response.statusCode == 404 || response.statusCode == 405) return null;
     final json = _jsonMap(response.data);
-    final data = _asMap(json?['data']) ?? json;
+    if (json == null) return null;
+    final direct = json['data']?.toString().trim();
+    if (direct != null &&
+        direct.isNotEmpty &&
+        (direct.startsWith('http://') || direct.startsWith('https://'))) {
+      return direct;
+    }
+    final data = _asMap(json['data']) ?? json;
     final value = _stringValue(
       data,
       const ['subscribe_url', 'subscribeUrl', 'subscription_url', 'url'],

@@ -360,7 +360,7 @@ class _AirportAccountPanel extends ConsumerWidget {
     WidgetRef ref,
     String url,
   ) async {
-    await globalState.container
+    await ref
         .read(profilesActionProvider.notifier)
         .addProfileFormURL(url, label: preset.name);
     if (context.mounted) Navigator.of(context).pop();
