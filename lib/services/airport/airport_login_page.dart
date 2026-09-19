@@ -24,6 +24,7 @@ class AirportLoginPage extends StatefulWidget {
 
 class _AirportLoginPageState extends State<AirportLoginPage> {
   late final WebViewController _controller;
+  final WebViewCookieManager _cookieManager = WebViewCookieManager();
   bool _pageLoading = true;
   String? _lastUrl;
 
@@ -68,7 +69,8 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
       final storageValue = await _controller.runJavaScriptReturningResult(
         'JSON.stringify(Object.fromEntries(Object.entries(localStorage)))',
       );
-      final cookie = _decodeJsString(cookieValue);
+      final documentCookie = _decodeJsString(cookieValue);
+      final cookie = await _readCookies(documentCookie);
       final storage = _decodeJsString(storageValue);
       final hasToken = _hasStorageToken(storage);
       if (cookie.trim().isEmpty && !hasToken) return null;
@@ -82,6 +84,28 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<String> _readCookies(String documentCookie) async {
+    final values = <String, String>{};
+    for (final part in documentCookie.split(';')) {
+      final separator = part.indexOf('=');
+      if (separator <= 0) continue;
+      final name = part.substring(0, separator).trim();
+      final value = part.substring(separator + 1).trim();
+      if (name.isNotEmpty) values[name] = value;
+    }
+    try {
+      final cookies = await _cookieManager.getCookies(
+        domain: Uri.parse(widget.baseUrl),
+      );
+      for (final item in cookies) {
+        values[item.name] = item.value;
+      }
+    } catch (_) {
+      // document.cookie is still useful on older WebView implementations.
+    }
+    return values.entries.map((entry) => '${entry.key}=${entry.value}').join('; ');
   }
 
   String _decodeJsString(Object? value) {

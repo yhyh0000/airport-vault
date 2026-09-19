@@ -10,15 +10,15 @@
 
 ### iKun
 
-- 默认入口：`https://ikuuu.top`，同时保留 `ikuuu.pw`、`ikuuu.de` 备用入口。
+- 默认入口：`https://ikuuu.top`，同时保留 `ikuuu.pw`、`ikuuu.co`、`ikuuu.ltd`、`ikuuu.fyi`、`ikuuu.win`、`ikuuu.foo` 和 `ikuuu.de` 备用入口。
 - 登录：官方 `/auth/login` 页面，网页登录后读取 Cookie。
-- 账户页：`/user`，从页面文本与 `subscription-userinfo` 响应头读取流量、到期时间和订阅地址。
-- 签到：`POST /user/checkin`，按 `ret/msg` 以及“已签到”文案判断结果。
+- 账户页：`/user`，先解开当前站点返回的 base64 页面包装，再从页面文本与 `subscription-userinfo` 响应头读取流量、到期时间和订阅地址。
+- 签到：无请求体的 `POST /user/checkin`，按 `ret/msg` 以及“已签到”文案判断结果；不发送空 JSON，避免旧版 SSPanel 返回 405。
 - 备注：iKuuu 域名经常变更，入口不应硬编码成永久唯一地址。
 
 ### 宝可梦
 
-- 默认入口：`https://web1.go52pokemon.com`，同时保留 `love1.go52pokemon.com`、`p6m6.com`、`web1.52pokemon66.cc` 备用入口。
+- 默认入口：`https://web2.52pokemon.cc`，同时保留 `love.52pokemon.cc`、`web4.52pokemon.cc`、`52pokemon.yunjnet.com` 和旧入口备用。宝可梦导航页当前提供主题一 `web2.52pokemon.cc` 与主题二 `love.52pokemon.cc`。
 - 登录：优先按 V2Board/XBoard 的 `/#/login` SPA 页面处理；Cookie 之外同时读取 localStorage 中的 token。
 - 账户：`GET /api/v1/user/info`，兼容 `u/d/transfer_enable/expired_at` 字段。
 - 订阅：`GET /api/v1/user/getSubscribe`，兼容 `subscribe_url/subscribeUrl`。

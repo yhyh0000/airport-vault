@@ -200,6 +200,9 @@ jobs:
       - name: Enforce typography source contract
         run: flutter test test/theme/typography/typography_source_contract_test.dart
 
+      - name: Verify airport adapter contracts
+        run: flutter test test/services/airport/airport_models_test.dart
+
       - name: Verify Mihomo runtime config regression baseline
         run: |
           flutter test test/mihomo/runtime_config_regression_test.dart

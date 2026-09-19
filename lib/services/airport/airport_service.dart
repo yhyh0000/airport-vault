@@ -70,7 +70,10 @@ class AirportService {
             session,
             '/user/checkin',
             method: 'POST',
-            headers: const {'X-Requested-With': 'XMLHttpRequest'},
+            headers: const {
+              'Accept': 'application/json, text/javascript, */*; q=0.01',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
           )
         : await _pokemonCheckin(session);
 
@@ -96,12 +99,13 @@ class AirportService {
   Future<AirportSnapshot> _syncIkun(AirportSession session) async {
     final response = await _request(session, '/user');
     _throwIfAuth(response);
-    final html = response.data?.toString() ?? '';
+    final html = _unwrapHtml(response.data?.toString() ?? '');
     if (_looksLikeLoginPage(html, response.realUri.toString())) {
       throw const AirportAuthRequired('iKun 登录状态已失效，请重新网页登录');
     }
     final userInfo = response.headers.value('subscription-userinfo');
-    final traffic = _parseTraffic('$html\n${userInfo ?? ''}');
+    final metadata = '$html\n${userInfo ?? ''}';
+    final traffic = _parseTraffic(metadata);
     return AirportSnapshot(
       kind: session.kind,
       baseUrl: session.baseUrl,
@@ -111,7 +115,7 @@ class AirportService {
       upload: traffic.upload,
       download: traffic.download,
       total: traffic.total,
-      expireAt: _parseDate(html),
+      expireAt: _parseDate(metadata),
       subscriptionUrl: _findSubscriptionUrl(html, session.baseUrl),
       checkinDone: _containsCheckinMessage(_stripHtml(html)),
       message: _firstMatch(html, [
@@ -123,6 +127,11 @@ class AirportService {
 
   Future<AirportSnapshot> _syncPokemon(AirportSession session) async {
     final infoResponse = await _request(session, '/api/v1/user/info');
+    if (infoResponse.statusCode == 404 || infoResponse.statusCode == 405) {
+      final htmlResponse = await _request(session, '/');
+      _throwIfAuth(htmlResponse);
+      return _syncHtmlFallback(session, htmlResponse.data?.toString() ?? '');
+    }
     _throwIfAuth(infoResponse);
     final info = _jsonMap(infoResponse.data);
     if (info == null) {
@@ -150,6 +159,7 @@ class AirportService {
     AirportSession session,
     String html,
   ) async {
+    html = _unwrapHtml(html);
     if (_looksLikeLoginPage(html, session.baseUrl)) {
       throw const AirportAuthRequired('宝可梦机场登录状态已失效，请重新网页登录');
     }
@@ -185,6 +195,7 @@ class AirportService {
   Future<String?> _getPokemonSubscribeUrl(AirportSession session) async {
     final response = await _request(session, '/api/v1/user/getSubscribe');
     if (response.statusCode == 404 || response.statusCode == 405) return null;
+    _throwIfAuth(response);
     final json = _jsonMap(response.data);
     if (json == null) return null;
     final direct = json['data']?.toString().trim();
@@ -219,7 +230,9 @@ class AirportService {
     try {
       return await _dio.request<dynamic>(
         url,
-        data: method == 'GET' ? null : <String, String>{},
+        // iKun's legacy check-in endpoint rejects an empty JSON body with 405.
+        // Sending no body also keeps Dio from adding Content-Type.
+        data: null,
         options: Options(method: method, headers: requestHeaders),
       );
     } on DioException catch (error) {
@@ -243,10 +256,29 @@ class AirportService {
   }
 
   bool _looksLikeLoginPage(String body, String url) {
-    final lower = '$url\n$body'.toLowerCase();
+    final lower = '$url\n${_unwrapHtml(body)}'.toLowerCase();
     return lower.contains('/auth/login') ||
         lower.contains('#/login') ||
         (lower.contains('登录') && lower.contains('密码') && !lower.contains('签到成功'));
+  }
+
+  String _unwrapHtml(String source) {
+    var current = source;
+    for (var i = 0; i < 2; i++) {
+      final match = RegExp(
+        r'''var\s+originBody\s*=\s*["']([^"']+)["']''',
+        caseSensitive: false,
+      ).firstMatch(current);
+      if (match == null) break;
+      try {
+        final decoded = utf8.decode(base64Decode(match.group(1)!));
+        if (decoded == current) break;
+        current = decoded;
+      } catch (_) {
+        break;
+      }
+    }
+    return current;
   }
 
   Map<String, dynamic>? _jsonMap(Object? value) {
