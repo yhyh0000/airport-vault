@@ -4176,9 +4176,10 @@ class ProfilesAction extends _$ProfilesAction {
     }
   }
 
-  Future<void> addProfileFormURL(
+  Future<Profile?> addProfileFormURL(
     String url, {
     String? label,
+    Map<String, String>? headers,
     bool autoUpdate = true,
     Duration autoUpdateDuration = defaultUpdateDuration,
   }) async {
@@ -4197,6 +4198,7 @@ class ProfilesAction extends _$ProfilesAction {
                   ? normalizedLabel
                   : null,
             ).copyWith(
+              sourceHeaders: headers ?? const {},
               autoUpdate: autoUpdate,
               autoUpdateDuration: autoUpdateDuration,
             );
@@ -4207,6 +4209,7 @@ class ProfilesAction extends _$ProfilesAction {
     if (profile != null) {
       putProfile(profile);
     }
+    return profile;
   }
 
   void setProfileAndAutoApply(Profile profile) {
@@ -4219,7 +4222,7 @@ class ProfilesAction extends _$ProfilesAction {
   Future<void> addProfileFormQrCode() async {
     final url = await globalState.safeRun(picker.pickerConfigQRCode);
     if (url == null) return;
-    addProfileFormURL(url);
+    await addProfileFormURL(url);
   }
 
   void reorder(List<Profile> profiles) {

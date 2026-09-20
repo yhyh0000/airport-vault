@@ -48,6 +48,10 @@ abstract class Profile with _$Profile {
     @Default('') String label,
     String? currentGroupName,
     @Default('') String url,
+    /// Extra request headers used by subscription sources that require the
+    /// airport login session.  This is intentionally persisted with the
+    /// profile so background refreshes keep working after the first import.
+    @Default({}) Map<String, String> sourceHeaders,
     DateTime? lastUpdateDate,
     required Duration autoUpdateDuration,
     SubscriptionInfo? subscriptionInfo,
@@ -155,7 +159,9 @@ extension ProfileExtension on Profile {
   Future<bool> get sourceExists async => (await _getFile()).exists();
 
   Future<ProfileSourceResponse> downloadSource() async {
-    final response = await request.getFileResponseForUrl(url);
+    final response = sourceHeaders.isEmpty
+        ? await request.getFileResponseForUrl(url)
+        : await request.getFileResponseForUrlWithHeaders(url, sourceHeaders);
     final disposition = response.headers.value('content-disposition');
     final userinfo = response.headers.value('subscription-userinfo');
     return ProfileSourceResponse(

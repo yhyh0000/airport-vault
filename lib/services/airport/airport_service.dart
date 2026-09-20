@@ -25,6 +25,16 @@ class AirportRequestFailed implements Exception {
   String toString() => message;
 }
 
+class AirportEntryProbe {
+  const AirportEntryProbe({
+    required this.baseUrl,
+    required this.elapsed,
+  });
+
+  final String baseUrl;
+  final Duration elapsed;
+}
+
 /// Web-compatible adapters for the two initial airports.
 ///
 /// iKun currently exposes an SSPanel-style server-rendered page and
@@ -56,6 +66,29 @@ class AirportService {
       },
     ),
   );
+
+  /// Probes every configured entry in parallel and returns the fastest entry
+  /// that looks like the real airport application.  A DNS hit alone is not
+  /// enough: maintenance pages, anti-bot guards and navigation-only domains
+  /// are rejected before the result is shown to the login WebView.
+  Future<AirportEntryProbe?> findBestEntry(
+    AirportSiteDefinition site, {
+    String? preferredBaseUrl,
+  }) async {
+    final candidates = <String>[
+      if (preferredBaseUrl != null && preferredBaseUrl.trim().isNotEmpty)
+        preferredBaseUrl,
+      ...site.baseUrls,
+    ].map(_normalizeBaseUrl).whereType<String>().toSet().toList();
+    if (candidates.isEmpty) return null;
+
+    final probes = await Future.wait(
+      candidates.map((baseUrl) => _probeEntry(site, baseUrl)),
+    );
+    final valid = probes.whereType<AirportEntryProbe>().toList()
+      ..sort((a, b) => a.elapsed.compareTo(b.elapsed));
+    return valid.isEmpty ? null : valid.first;
+  }
 
   Future<AirportSnapshot> sync(AirportSession session) async {
     return switch (session.kind) {
@@ -193,7 +226,14 @@ class AirportService {
   }
 
   Future<String?> _getPokemonSubscribeUrl(AirportSession session) async {
-    final response = await _request(session, '/api/v1/user/getSubscribe');
+    late final Response<dynamic> response;
+    try {
+      response = await _request(session, '/api/v1/user/getSubscribe');
+    } on AirportRequestFailed {
+      // Some older V2Board deployments expose user info but not the optional
+      // subscription endpoint.  Account management should still work there.
+      return null;
+    }
     if (response.statusCode == 404 || response.statusCode == 405) return null;
     _throwIfAuth(response);
     final json = _jsonMap(response.data);
@@ -240,6 +280,71 @@ class AirportService {
         error.response?.statusMessage ?? error.message ?? '机场网页暂时无法访问',
       );
     }
+  }
+
+  Future<AirportEntryProbe?> _probeEntry(
+    AirportSiteDefinition site,
+    String baseUrl,
+  ) async {
+    final stopwatch = Stopwatch()..start();
+    final path = site.kind == AirportKind.ikun ? site.loginPath : '/';
+    try {
+      final response = await _dio.get<dynamic>(
+        '$baseUrl$path',
+        options: Options(
+          responseType: ResponseType.plain,
+          sendTimeout: const Duration(seconds: 5),
+          receiveTimeout: const Duration(seconds: 7),
+          validateStatus: (status) => status != null && status < 500,
+          headers: {
+            'Referer': '$baseUrl/',
+            'Origin': baseUrl,
+          },
+        ),
+      );
+      final status = response.statusCode ?? 500;
+      final body = _unwrapHtml(response.data?.toString() ?? '').toLowerCase();
+      if (status >= 400 || body.trim().isEmpty ||
+          !_looksLikeUsableEntry(site.kind, body)) {
+        return null;
+      }
+      return AirportEntryProbe(
+        baseUrl: baseUrl,
+        elapsed: stopwatch.elapsed,
+      );
+    } catch (_) {
+      return null;
+    } finally {
+      stopwatch.stop();
+    }
+  }
+
+  bool _looksLikeUsableEntry(AirportKind kind, String body) {
+    if (kind == AirportKind.ikun) {
+      return body.contains('password') ||
+          body.contains('密码') ||
+          body.contains('email') ||
+          body.contains('auth/login') ||
+          body.contains('登录');
+    }
+    // Pokemon is a hash-routed SPA, so the login route is not sent to the
+    // server.  Accept the app shell, but reject plain navigation and guard
+    // pages that would otherwise look reachable at the TCP level.
+    return body.contains('id="app"') ||
+        body.contains("id='app'") ||
+        body.contains('#/login') ||
+        body.contains('登录') ||
+        body.contains('password');
+  }
+
+  String? _normalizeBaseUrl(String value) {
+    final uri = Uri.tryParse(value.trim());
+    if (uri == null || uri.scheme.toLowerCase() != 'https' || uri.host.isEmpty) {
+      return null;
+    }
+    final port = uri.hasPort ? ':${uri.port}' : '';
+    final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+    return 'https://${uri.host}$port$path';
   }
 
   void _throwIfAuth(Response<dynamic> response) {
@@ -408,6 +513,16 @@ class AirportService {
   }
 
   String? _findSubscriptionUrl(String html, String baseUrl) {
+    final directAttributes = RegExp(
+      r'''(?:href|data-url|data-clipboard-text)=['"]([^'"]*(?:subscribe|subscription|clash|sing-box)[^'"]*)['"]''',
+      caseSensitive: false,
+    );
+    for (final match in directAttributes.allMatches(html)) {
+      final value = match.group(1)?.trim();
+      if (value != null && value.isNotEmpty) {
+        return _absoluteUrl(value, baseUrl);
+      }
+    }
     final patterns = [
       RegExp(
         r'''href=["']([^"']+)["'][^>]{0,240}>[\s\S]{0,240}?(?:订阅|subscription|clash|sing-box)''',
@@ -420,6 +535,11 @@ class AirportService {
   }
 
   String _absoluteUrl(String value, String baseUrl) {
+    value = value
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .trim();
     if (value.startsWith('http://') || value.startsWith('https://')) return value;
     final base = Uri.parse(baseUrl);
     return base.resolve(value).toString();

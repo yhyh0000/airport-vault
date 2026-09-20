@@ -253,7 +253,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
                 children: [
                   Expanded(
                     child: Text(
-                      '${_webError!}\n请返回选择其他入口，或使用自定义入口地址。',
+                      '${_webError!}\n请返回重试自动探测，或使用高级自定义入口。',
                       style: TextStyle(
                         color: Theme.of(context).colorScheme.onErrorContainer,
                       ),

@@ -68,6 +68,9 @@ const airportSiteDefinitions = <AirportSiteDefinition>[
     alternateBaseUrls: [
       'https://love.52pokemon.cc',
       'https://web4.52pokemon.cc',
+      'https://web1.52pokemon.cc',
+      'https://web1.52pokemon66.cc',
+      'https://web2.go52pokemon.com',
       'https://52pokemon.yunjnet.com',
       'https://web1.go52pokemon.com',
     ],

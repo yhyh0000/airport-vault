@@ -12,6 +12,15 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.3.0',
+    date: '2026-09-20',
+    changes: [
+      '登录时自动并行探测机场入口并选择最快可用地址，不再要求用户手动挑选域名',
+      '订阅导入携带机场登录 Cookie/Token，并保存到订阅源用于后续自动更新',
+      '账户中心增加订阅地址复制和明确的导入结果提示，补齐机场管理核心链路',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.2.2',
     date: '2026-09-20',
     changes: [

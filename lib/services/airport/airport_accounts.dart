@@ -92,6 +92,17 @@ class AirportAccountsNotifier extends Notifier<AirportAccountsState> {
     await sync(session.kind);
   }
 
+  Future<String?> findBestEntry(
+    AirportKind kind, {
+    String? preferredBaseUrl,
+  }) async {
+    final result = await _service.findBestEntry(
+      airportSite(kind),
+      preferredBaseUrl: preferredBaseUrl,
+    );
+    return result?.baseUrl;
+  }
+
   Future<void> remove(AirportKind kind) async {
     await _store.delete(kind);
     state = state.copyWith(kind, const AirportAccountState());

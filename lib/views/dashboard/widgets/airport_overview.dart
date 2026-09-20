@@ -6,6 +6,7 @@ import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/surge/surge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 /// Airport business cards: account session, dashboard data, check-in and
 /// subscription import are separate from the Mihomo profile list.
@@ -348,66 +349,58 @@ class _AirportCard extends StatelessWidget {
 class _AirportAccountPanel extends ConsumerWidget {
   const _AirportAccountPanel({required this.preset});
 
-  static const _customBaseUrl = '__airport_custom_base_url__';
-
   final _AirportPreset preset;
 
   Future<void> _login(BuildContext context, WidgetRef ref) async {
     final site = airportSite(preset.kind);
-    final baseUrl = await _chooseBaseUrl(context, site);
-    if (baseUrl == null || !context.mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => const AlertDialog(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2.5),
+            ),
+            SizedBox(width: 16),
+            Expanded(child: Text('正在自动选择最快的可用入口…')),
+          ],
+        ),
+      ),
+    );
+    final baseUrl = await ref
+        .read(airportAccountsProvider.notifier)
+        .findBestEntry(
+          preset.kind,
+          preferredBaseUrl: ref
+              .read(airportAccountsProvider)
+              .forKind(preset.kind)
+              .session
+              ?.baseUrl,
+        );
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
+    var resolvedBaseUrl = baseUrl;
+    if (resolvedBaseUrl == null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('自动探测没有找到可用入口，可检查网络后重试')),
+      );
+      resolvedBaseUrl = await _askCustomBaseUrl(context);
+    }
+    if (resolvedBaseUrl == null || !context.mounted) return;
     final session = await Navigator.of(context).push<AirportSession>(
       MaterialPageRoute(
         builder: (_) => AirportLoginPage(
           site: site,
-          baseUrl: baseUrl,
+          baseUrl: resolvedBaseUrl!,
         ),
       ),
     );
     if (session == null || !context.mounted) return;
     await ref.read(airportAccountsProvider.notifier).saveSession(session);
-  }
-
-  Future<String?> _chooseBaseUrl(
-    BuildContext context,
-    AirportSiteDefinition site,
-  ) async {
-    final selected = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text('${site.title}入口'),
-        children: [
-          for (final url in site.baseUrls)
-            SimpleDialogOption(
-              onPressed: () => Navigator.of(context).pop(url),
-              child: Row(
-                children: [
-                  Icon(
-                    url == site.defaultBaseUrl
-                        ? Icons.star_rounded
-                        : Icons.language_rounded,
-                    size: 18,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(url),
-                ],
-              ),
-            ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.of(context).pop(_customBaseUrl),
-            child: const Row(
-              children: [
-                Icon(Icons.edit_location_alt_rounded, size: 18),
-                SizedBox(width: 10),
-                Text('自定义入口地址'),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-    if (selected != _customBaseUrl || !context.mounted) return selected;
-    return _askCustomBaseUrl(context);
   }
 
   Future<String?> _askCustomBaseUrl(BuildContext context) async {
@@ -457,11 +450,26 @@ class _AirportAccountPanel extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
     String url,
+    AirportSession session,
   ) async {
-    await ref
+    final headers = <String, String>{
+      if (session.cookie.trim().isNotEmpty) 'Cookie': session.cookie,
+      if (session.accessToken != null)
+        'Authorization': 'Bearer ${session.accessToken}',
+      'Referer': '${session.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/',
+      'Origin': session.baseUrl.replaceFirst(RegExp(r'/+$'), ''),
+    };
+    final profile = await ref
         .read(profilesActionProvider.notifier)
-        .addProfileFormURL(url, label: preset.name);
-    if (context.mounted) Navigator.of(context).pop();
+        .addProfileFormURL(url, label: preset.name, headers: headers);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          profile == null ? '订阅导入失败，请检查登录状态或订阅地址' : '订阅已导入并保存登录态',
+        ),
+      ),
+    );
   }
 
   @override
@@ -556,9 +564,24 @@ class _AirportAccountPanel extends ConsumerWidget {
                     context,
                     ref,
                     snapshot!.subscriptionUrl!,
+                    account.session!,
                   ),
                   icon: const Icon(Icons.download_for_offline_rounded),
                   label: const Text('导入订阅到节点列表'),
+                ),
+                TextButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: snapshot!.subscriptionUrl!),
+                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('订阅地址已复制')),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 17),
+                  label: const Text('复制订阅地址'),
                 ),
               ],
               const SizedBox(height: 4),
