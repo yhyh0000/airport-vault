@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.12',
+    date: '2026-09-20',
+    changes: [
+      '完善移动端构建诊断，继续保障宝可梦 8.8 兑换功能可发布',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.11',
     date: '2026-09-20',
     changes: [

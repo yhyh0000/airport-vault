@@ -184,10 +184,9 @@ jobs:
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             while IFS= read -r line; do
-              case "$line" in
-                *" error - "*|*" error  - "*)
-                  echo "::error::$line"
-                  ;;
+              lower_line="${line,,}"
+              case "$lower_line" in
+                *error*) echo "::error::$line" ;;
               esac
             done < /tmp/flutter-analyze.log
           fi
