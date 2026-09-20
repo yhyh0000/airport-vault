@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>机场钥仓 · 产品原型</title>
+  <style>
+    :root {
+      --paper: #f6f7fb;
+      --card: #ffffff;
+      --ink: #17213f;
+      --muted: #778097;
+      --line: #e7eaf2;
+      --indigo: #5b61ff;
+      --indigo-soft: #eef0ff;
+      --teal: #2cc7c9;
+      --teal-soft: #e7fbfb;
+      --green: #18a96b;
+      --amber: #d89732;
+      --red: #d95563;
+      --shadow: 0 18px 45px rgba(31, 43, 82, .08);
+      --shadow-soft: 0 8px 24px rgba(31, 43, 82, .06);
+      --radius-xl: 26px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    .app { min-height: 100vh; display: flex; }
+    .sidebar {
+      width: 248px; flex: 0 0 248px; padding: 26px 18px;
+      border-right: 1px solid rgba(231, 234, 242, .9); background: rgba(255,255,255,.72);
+      display: flex; flex-direction: column; gap: 28px; position: sticky; top: 0; height: 100vh;
+      backdrop-filter: blur(18px);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; padding: 0 10px; }
+    .brand-mark { width: 42px; height: 42px; display: grid; place-items: center; color: #fff; border-radius: 15px; background: linear-gradient(140deg, #7075ff, #4850eb); box-shadow: 0 12px 24px rgba(91,97,255,.28); font-size: 21px; }
+    .brand h1 { font-size: 17px; line-height: 1.15; margin: 0; letter-spacing: .02em; }
+    .brand p { margin: 4px 0 0; font-size: 11px; color: var(--muted); }
+    .nav { display: grid; gap: 7px; }
+    .nav button { border: 0; background: transparent; color: var(--muted); display: flex; align-items: center; gap: 12px; padding: 13px 14px; border-radius: 14px; text-align: left; font-weight: 650; transition: .18s ease; }
+    .nav button:hover { background: #f0f2ff; color: var(--indigo); }
+    .nav button.active { background: var(--indigo-soft); color: var(--indigo); }
+    .nav .icon { width: 22px; text-align: center; font-size: 19px; }
+    .sidebar-foot { margin-top: auto; padding: 14px; border: 1px solid var(--line); border-radius: 17px; background: #fff; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .sidebar-foot strong { color: var(--ink); display: block; margin-bottom: 4px; }
+
+    .main { flex: 1; min-width: 0; padding: 30px clamp(20px, 4vw, 58px) 44px; }
+    .main-inner { max-width: 1190px; margin: 0 auto; }
+    .topbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 28px; }
+    .eyebrow { color: var(--indigo); text-transform: uppercase; letter-spacing: .12em; font-size: 11px; font-weight: 800; }
+    .topbar h2 { margin: 6px 0 0; font-size: clamp(28px, 4vw, 42px); letter-spacing: -.04em; line-height: 1.08; }
+    .topbar p { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
+    .top-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .btn { border: 0; border-radius: 12px; padding: 11px 15px; font-weight: 750; color: var(--ink); background: #fff; box-shadow: 0 0 0 1px var(--line) inset; transition: .18s ease; }
+    .btn:hover { transform: translateY(-1px); box-shadow: 0 7px 18px rgba(31,43,82,.09); }
+    .btn.primary { color: #fff; background: var(--indigo); box-shadow: 0 10px 20px rgba(91,97,255,.2); }
+    .btn.teal { color: #0a5c60; background: var(--teal-soft); box-shadow: none; }
+    .btn.ghost { background: transparent; box-shadow: none; color: var(--muted); }
+    .btn.danger { color: var(--red); background: #fff5f6; box-shadow: none; }
+    .btn.small { padding: 8px 11px; font-size: 12px; border-radius: 10px; }
+
+    .hero { display: grid; grid-template-columns: 1.25fr .75fr; overflow: hidden; color: #fff; border-radius: var(--radius-xl); background: linear-gradient(135deg, #5b61ff 0%, #4d54e6 56%, #313ba7 100%); box-shadow: 0 22px 44px rgba(72,80,235,.2); position: relative; }
+    .hero:after { content: ""; position: absolute; width: 300px; height: 300px; right: -85px; top: -120px; border: 28px solid rgba(255,255,255,.1); border-radius: 50%; }
+    .hero-copy { padding: 30px 32px; position: relative; z-index: 1; }
+    .hero-copy .label { display: inline-flex; gap: 7px; align-items: center; padding: 6px 10px; border-radius: 99px; background: rgba(255,255,255,.14); font-size: 12px; font-weight: 750; }
+    .hero h3 { font-size: clamp(24px, 3vw, 34px); letter-spacing: -.04em; margin: 20px 0 8px; }
+    .hero p { margin: 0; color: rgba(255,255,255,.78); max-width: 520px; line-height: 1.65; font-size: 14px; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+    .hero .btn { background: rgba(255,255,255,.16); color: #fff; box-shadow: none; }
+    .hero .btn.primary { color: var(--indigo); background: #fff; }
+    .runtime { margin: 20px; padding: 21px; border: 1px solid rgba(255,255,255,.2); border-radius: 22px; background: rgba(16,23,81,.2); position: relative; z-index: 1; align-self: stretch; display: flex; flex-direction: column; justify-content: space-between; }
+    .runtime-top { display: flex; justify-content: space-between; gap: 12px; color: rgba(255,255,255,.75); font-size: 12px; }
+    .live { display: inline-flex; align-items: center; gap: 6px; color: #c6ffe9; font-weight: 750; }
+    .live:before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #60e9ab; box-shadow: 0 0 0 5px rgba(96,233,171,.14); }
+    .runtime h4 { font-size: 26px; margin: 22px 0 4px; }
+    .runtime small { color: rgba(255,255,255,.66); }
+    .runtime-bar { height: 8px; background: rgba(255,255,255,.15); border-radius: 99px; overflow: hidden; margin: 21px 0 8px; }
+    .runtime-bar span { display: block; width: 67%; height: 100%; border-radius: inherit; background: #5ee8aa; }
+    .runtime-meta { display: flex; justify-content: space-between; color: rgba(255,255,255,.7); font-size: 12px; }
+
+    .section { margin-top: 30px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .section-head h3 { margin: 0; font-size: 18px; letter-spacing: -.02em; }
+    .section-head p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+    .section-head .link { border: 0; color: var(--indigo); background: transparent; font-size: 13px; font-weight: 750; }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 13px; }
+    .metric { padding: 17px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--card); box-shadow: var(--shadow-soft); }
+    .metric-top { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 12px; }
+    .metric .metric-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 10px; background: var(--indigo-soft); color: var(--indigo); }
+    .metric strong { display: block; font-size: 22px; margin-top: 15px; letter-spacing: -.03em; }
+    .metric small { display: block; margin-top: 5px; color: var(--muted); }
+    .airport-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .airport-card { padding: 21px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--card); box-shadow: var(--shadow-soft); }
+    .airport-head { display: flex; gap: 12px; align-items: flex-start; }
+    .airport-logo { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 16px; font-size: 22px; font-weight: 850; }
+    .airport-logo.indigo { color: var(--indigo); background: var(--indigo-soft); }
+    .airport-logo.teal { color: #0da8ac; background: var(--teal-soft); }
+    .airport-title { flex: 1; min-width: 0; }
+    .airport-title h4 { margin: 1px 0 5px; font-size: 19px; }
+    .airport-title p { margin: 0; color: var(--muted); font-size: 12px; }
+    .status { display: inline-flex; gap: 6px; align-items: center; padding: 6px 9px; border-radius: 99px; font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .status.ok { color: #107b50; background: #e8fbf2; }
+    .status.warn { color: #a76813; background: #fff5de; }
+    .status.off { color: var(--muted); background: #f0f2f6; }
+    .status:before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .airport-info { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 20px 0; }
+    .info-box { padding: 12px; border-radius: 13px; background: #fafbfe; }
+    .info-box span { color: var(--muted); display: block; font-size: 11px; }
+    .info-box strong { display: block; margin-top: 5px; font-size: 14px; }
+    .sub-state { display: flex; gap: 10px; align-items: center; padding: 13px 14px; border-radius: 14px; background: var(--indigo-soft); color: #3f46cf; }
+    .sub-state.teal { background: var(--teal-soft); color: #147d81; }
+    .sub-state .sub-icon { font-size: 18px; }
+    .sub-state div { min-width: 0; flex: 1; }
+    .sub-state strong { display: block; font-size: 13px; }
+    .sub-state small { display: block; margin-top: 3px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+    .card-actions .btn { flex: 1 1 auto; }
+    .activity { border: 1px solid var(--line); border-radius: var(--radius-lg); background: #fff; overflow: hidden; }
+    .activity-row { display: grid; grid-template-columns: 32px 1fr auto; gap: 12px; align-items: center; padding: 15px 18px; border-bottom: 1px solid var(--line); }
+    .activity-row:last-child { border-bottom: 0; }
+    .activity-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 10px; background: #edf9f3; color: var(--green); }
+    .activity-row strong { display: block; font-size: 13px; }
+    .activity-row small { display: block; margin-top: 4px; color: var(--muted); }
+    .activity-time { color: var(--muted); font-size: 12px; }
+
+    .page-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: 18px; }
+    .panel { border: 1px solid var(--line); background: #fff; border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-soft); }
+    .panel h3 { margin: 0; font-size: 17px; }
+    .panel > p { color: var(--muted); font-size: 13px; margin: 7px 0 0; line-height: 1.55; }
+    .account-detail { display: grid; gap: 12px; margin-top: 18px; }
+    .detail-line { display: flex; justify-content: space-between; gap: 15px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .detail-line:last-child { border-bottom: 0; }
+    .detail-line span { color: var(--muted); }
+    .detail-line strong { text-align: right; }
+    .profile-list { display: grid; gap: 12px; margin-top: 18px; }
+    .profile-card { display: grid; grid-template-columns: 44px 1fr auto; gap: 13px; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: #fff; }
+    .profile-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 14px; color: var(--indigo); background: var(--indigo-soft); font-size: 20px; }
+    .profile-card h4 { margin: 0; font-size: 14px; }
+    .profile-card p { margin: 5px 0 0; color: var(--muted); font-size: 12px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 430px; }
+    .profile-card .profile-meta { text-align: right; color: var(--muted); font-size: 11px; }
+    .chip-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 17px; }
+    .chip { border: 1px solid var(--line); border-radius: 99px; color: var(--muted); background: #fff; padding: 8px 12px; font-size: 12px; font-weight: 700; }
+    .chip.active { color: var(--indigo); border-color: #cdd0ff; background: var(--indigo-soft); }
+    .node-list { display: grid; gap: 10px; margin-top: 17px; }
+    .node-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 12px; padding: 13px 14px; border: 1px solid var(--line); border-radius: 14px; }
+    .node-row strong { font-size: 13px; }
+    .node-row small { display: block; color: var(--muted); font-size: 11px; margin-top: 4px; }
+    .latency { color: var(--green); font-size: 12px; font-weight: 800; }
+    .latency.slow { color: var(--amber); }
+    .radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #cdd2df; position: relative; }
+    .radio.selected { border-color: var(--indigo); }
+    .radio.selected:after { content: ""; position: absolute; inset: 3px; border-radius: inherit; background: var(--indigo); }
+    .tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 18px; }
+    .tool { padding: 16px; display: flex; gap: 12px; align-items: center; border: 1px solid var(--line); border-radius: 15px; background: #fff; text-align: left; }
+    .tool:hover { border-color: #cbd0ff; background: #fbfbff; }
+    .tool-icon { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 12px; color: var(--indigo); background: var(--indigo-soft); }
+    .tool strong { display: block; font-size: 13px; }
+    .tool small { display: block; color: var(--muted); line-height: 1.45; margin-top: 4px; }
+
+    .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center; padding: 20px; background: rgba(20,27,53,.42); backdrop-filter: blur(8px); }
+    .modal-backdrop.open { display: flex; }
+    .modal { width: min(520px, 100%); max-height: min(760px, 92vh); overflow: auto; padding: 24px; border-radius: 24px; background: #fff; box-shadow: 0 30px 80px rgba(22,31,68,.22); }
+    .modal-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 15px; }
+    .modal h3 { margin: 0; font-size: 22px; letter-spacing: -.03em; }
+    .modal-head p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .close { width: 34px; height: 34px; border: 0; border-radius: 10px; color: var(--muted); background: #f4f5f8; font-size: 18px; }
+    .step-list { display: grid; gap: 10px; margin: 22px 0; }
+    .step { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; }
+    .step-dot { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #f1f2f6; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .step.done { color: var(--green); }
+    .step.done .step-dot { color: #fff; background: var(--green); }
+    .step.active { color: var(--indigo); font-weight: 750; }
+    .step.active .step-dot { color: #fff; background: var(--indigo); }
+    .modal-box { padding: 15px; border-radius: 15px; background: #fafbfe; border: 1px solid var(--line); }
+    .modal-box strong { display: block; font-size: 13px; }
+    .modal-box small { display: block; color: var(--muted); line-height: 1.55; margin-top: 5px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
+    .input { width: 100%; margin-top: 8px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 13px; outline: none; color: var(--ink); }
+    .input:focus { border-color: #aeb3ff; box-shadow: 0 0 0 4px var(--indigo-soft); }
+    .toast { position: fixed; left: 50%; bottom: 26px; z-index: 40; transform: translate(-50%, 20px); opacity: 0; pointer-events: none; padding: 12px 16px; border-radius: 12px; color: #fff; background: #202942; box-shadow: var(--shadow); transition: .22s ease; font-size: 13px; }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .empty { padding: 32px 18px; border: 1px dashed #cfd4e2; border-radius: 17px; color: var(--muted); text-align: center; }
+
+    .mobile-nav { display: none; }
+    @media (max-width: 930px) {
+      .sidebar { width: 78px; flex-basis: 78px; padding: 20px 10px; align-items: center; }
+      .brand { padding: 0; }
+      .brand > div:last-child, .sidebar-foot, .nav button span:not(.icon) { display: none; }
+      .nav button { width: 54px; justify-content: center; padding: 14px 0; }
+      .main { padding: 24px 24px 35px; }
+      .hero { grid-template-columns: 1fr; }
+      .runtime { margin: 0 20px 20px; }
+      .page-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 650px) {
+      .app { display: block; }
+      .sidebar { display: none; }
+      .main { padding: 20px 15px 94px; }
+      .topbar { margin-bottom: 21px; }
+      .topbar h2 { font-size: 30px; }
+      .topbar p { font-size: 12px; }
+      .top-actions { display: none; }
+      .hero-copy { padding: 24px 22px; }
+      .hero h3 { font-size: 27px; }
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+      .metric { padding: 13px; }
+      .metric strong { font-size: 19px; margin-top: 11px; }
+      .airport-grid { grid-template-columns: 1fr; }
+      .section { margin-top: 24px; }
+      .section-head h3 { font-size: 17px; }
+      .page-grid { gap: 13px; }
+      .panel { padding: 16px; }
+      .profile-card { grid-template-columns: 38px 1fr auto; padding: 11px; gap: 10px; }
+      .profile-icon { width: 38px; height: 38px; }
+      .profile-card .profile-meta { display: none; }
+      .tool-grid { grid-template-columns: 1fr; }
+      .mobile-nav { position: fixed; display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; left: 12px; right: 12px; bottom: 12px; z-index: 10; padding: 8px 5px calc(8px + env(safe-area-inset-bottom)); border: 1px solid rgba(231,234,242,.95); border-radius: 22px; background: rgba(255,255,255,.9); box-shadow: 0 15px 35px rgba(31,43,82,.15); backdrop-filter: blur(18px); }
+      .mobile-nav button { border: 0; background: transparent; color: var(--muted); font-size: 10px; font-weight: 750; padding: 5px 2px; }
+      .mobile-nav button.active { color: var(--indigo); }
+      .mobile-nav .nav-icon { display: block; font-size: 18px; line-height: 20px; margin-bottom: 2px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><div class="brand-mark">⌁</div><div><h1>机场钥仓</h1><p>Airport Vault</p></div></div>
+      <nav class="nav" aria-label="主导航">
+        <button class="active" data-page="dashboard"><span class="icon">▦</span><span>总览</span></button>
+        <button data-page="airports"><span class="icon">◉</span><span>机场</span></button>
+        <button data-page="subscriptions"><span class="icon">↗</span><span>订阅</span></button>
+        <button data-page="nodes"><span class="icon">⌁</span><span>节点</span></button>
+        <button data-page="tools"><span class="icon">✣</span><span>工具</span></button>
+      </nav>
+      <div class="sidebar-foot"><strong>设计预览 v1</strong>先验证业务闭环，再进入 Android 开发。</div>
+    </aside>
+
+    <main class="main"><div class="main-inner">
+      <div class="topbar">
+        <div><div class="eyebrow">Airport Vault / Product Prototype</div><h2 id="page-title">总览</h2><p id="page-subtitle">多个机场，一个清晰的管理入口。</p></div>
+        <div class="top-actions"><button class="btn" data-action="sync-all">↻ 同步全部</button><button class="btn primary" data-action="add-subscription">＋ 添加订阅</button></div>
+      </div>
+
+      <section class="page" data-page-view="dashboard">
+        <div class="hero"><div class="hero-copy"><span class="label">✦ 本地优先 · 多机场管理</span><h3>把机场账户，收进一个仓库。</h3><p>登录后自动同步账户、发现订阅并连接到节点列表。订阅失效时保留旧配置，网络问题不会让你的节点凭空消失。</p><div class="hero-actions"><button class="btn primary" data-action="open-login" data-kind="ikun">绑定 iKun</button><button class="btn" data-action="go-page" data-page-target="subscriptions">查看订阅仓</button></div></div><div class="runtime"><div class="runtime-top"><span>当前运行台</span><span class="live">运行中</span></div><div><h4>iKun 主订阅</h4><small>Mihomo · 12 个策略组 · 46 个节点</small><div class="runtime-bar"><span></span></div><div class="runtime-meta"><span>已运行 02:18:42</span><span>规则模式</span></div></div></div></div>
+        <div class="section"><div class="metric-grid"><div class="metric"><div class="metric-top"><span>本月总流量</span><span class="metric-icon">↕</span></div><strong>38.6 GB</strong><small>剩余 161.4 GB</small></div><div class="metric"><div class="metric-top"><span>今日使用</span><span class="metric-icon">◷</span></div><strong>1.28 GB</strong><small>较昨日少 12%</small></div><div class="metric"><div class="metric-top"><span>已绑定机场</span><span class="metric-icon">◉</span></div><strong id="bound-count">1 / 2</strong><small>iKun 已连接</small></div><div class="metric"><div class="metric-top"><span>待处理事项</span><span class="metric-icon">!</span></div><strong id="pending-count">1 项</strong><small>Pokemon 等待同步</small></div></div></div>
+        <div class="section"><div class="section-head"><div><h3>机场账户</h3><p>登录、订阅和签到状态一眼可见。</p></div><button class="link" data-action="go-page" data-page-target="airports">管理全部 →</button></div><div class="airport-grid" id="dashboard-airports"></div></div>
+        <div class="section"><div class="section-head"><div><h3>最近活动</h3><p>所有同步任务都有可追踪的结果。</p></div></div><div class="activity"><div class="activity-row"><span class="activity-icon">✓</span><div><strong>iKun 订阅已更新</strong><small>节点从 44 个更新为 46 个 · 订阅头正常</small></div><span class="activity-time">刚刚</span></div><div class="activity-row"><span class="activity-icon">↻</span><div><strong>iKun 账户资料已同步</strong><small>流量、到期时间和签到状态已刷新</small></div><span class="activity-time">3 分钟前</span></div><div class="activity-row"><span class="activity-icon" style="background:#fff5de;color:#d89732">!</span><div><strong>Pokemon 等待登录</strong><small>绑定账户后可自动发现订阅</small></div><span class="activity-time">今天</span></div></div></div>
+      </section>
+
+      <section class="page" data-page-view="airports" hidden>
+        <div class="section-head"><div><h3>账户仓</h3><p>机场账户是订阅和签到的业务来源。</p></div><button class="btn primary small" data-action="open-login" data-kind="pokemon">＋ 绑定机场</button></div><div class="airport-grid" id="airport-page-list"></div>
+        <div class="section"><div class="section-head"><div><h3>业务原则</h3><p>账号、订阅和节点互相独立，错误不会级联破坏。</p></div></div><div class="page-grid"><div class="panel"><h3>登录成功之后</h3><p>登录不是终点，而是启动同步任务的开始。</p><div class="account-detail"><div class="detail-line"><span>① 保存会话</span><strong>Cookie / Token 进入安全存储</strong></div><div class="detail-line"><span>② 同步资料</span><strong>流量、到期、签到</strong></div><div class="detail-line"><span>③ 发现订阅</span><strong>验证格式和订阅头</strong></div><div class="detail-line"><span>④ 自动导入</span><strong>创建或更新 Mihomo Profile</strong></div></div></div><div class="panel"><h3>异常时怎么办</h3><p>没有订阅地址也不能让用户卡在空页面。</p><div class="modal-box" style="margin-top:18px"><strong>已登录，但暂未识别订阅地址</strong><small>打开机场订阅中心、重新发现订阅，或者手动粘贴链接。上一次可用配置会继续保留。</small></div><div class="card-actions"><button class="btn small" data-action="open-subscription" data-kind="ikun">订阅中心</button><button class="btn small teal" data-action="add-subscription">手动粘贴</button></div></div></div></div>
+      </section>
+
+      <section class="page" data-page-view="subscriptions" hidden>
+        <div class="section-head"><div><h3>订阅仓</h3><p>自动发现和手动导入的订阅，都在这里可见、可复制、可更新。</p></div><button class="btn primary small" data-action="add-subscription">＋ 添加订阅</button></div><div class="chip-row"><button class="chip active">全部订阅 <span id="profile-count">2</span></button><button class="chip">自动发现</button><button class="chip">手动导入</button><button class="chip">更新异常</button></div><div class="page-grid" style="margin-top:18px"><div class="panel"><h3>我的订阅</h3><p>订阅来源和运行配置分离，更新失败不会清空旧节点。</p><div class="profile-list" id="profile-list"></div></div><div class="panel"><h3>订阅来源说明</h3><p>机场登录后，应用自动发现并验证 Clash/Mihomo 地址。</p><div class="account-detail"><div class="detail-line"><span>自动发现</span><strong style="color:var(--green)">已开启</strong></div><div class="detail-line"><span>请求头</span><strong>随机场会话保存</strong></div><div class="detail-line"><span>更新策略</span><strong>每 12 小时</strong></div><div class="detail-line"><span>安全策略</span><strong>地址默认脱敏</strong></div></div><div class="modal-box" style="margin-top:16px"><strong>找不到订阅怎么办？</strong><small>进入机场详情 → 订阅中心，点击“重新发现”。如果机场页面结构发生变化，工具页会提供解析阶段和最终地址。</small></div></div></div></section>
+
+      <section class="page" data-page-view="nodes" hidden>
+        <div class="section-head"><div><h3>运行台</h3><p>Mihomo 当前连接状态和策略组。</p></div><button class="btn primary small" data-action="toggle-runtime">● 停止代理</button></div><div class="page-grid"><div class="panel"><h3>iKun 主订阅</h3><p>46 个节点 · 12 个策略组 · 上次更新 3 分钟前</p><div class="chip-row"><button class="chip active">规则模式</button><button class="chip">全局模式</button><button class="chip">直连模式</button></div><div class="node-list"><div class="node-row"><div><strong>🚀 节点选择</strong><small>当前：香港 · IPLC 01</small></div><span class="latency">82 ms</span><span class="radio selected"></span></div><div class="node-row"><div><strong>🎬 流媒体</strong><small>当前：日本 · Media 02</small></div><span class="latency">113 ms</span><span class="radio"></span></div><div class="node-row"><div><strong>🧠 AI 服务</strong><small>当前：美国 · GPT 03</small></div><span class="latency slow">248 ms</span><span class="radio"></span></div></div></div><div class="panel"><h3>节点变化摘要</h3><p>来自最近一次订阅更新。</p><div class="account-detail"><div class="detail-line"><span>新增节点</span><strong style="color:var(--green)">+4</strong></div><div class="detail-line"><span>移除节点</span><strong style="color:var(--red)">-2</strong></div><div class="detail-line"><span>策略组变化</span><strong>0</strong></div><div class="detail-line"><span>测速状态</span><strong style="color:var(--green)">46 / 46 完成</strong></div></div><button class="btn" style="width:100%;margin-top:18px" data-action="show-toast" data-message="正在重新测速全部节点…">重新测速</button></div></div></section>
+
+      <section class="page" data-page-view="tools" hidden><div class="section-head"><div><h3>维护中心</h3><p>诊断、备份和隐私设置集中在这里。</p></div></div><div class="tool-grid"><button class="tool" data-action="show-toast" data-message="备份任务已创建"><span class="tool-icon">⇩</span><span><strong>备份与恢复</strong><small>导出账户、订阅和运行配置</small></span></button><button class="tool" data-action="show-toast" data-message="正在检测机场入口…"><span class="tool-icon">⌁</span><span><strong>入口测速</strong><small>自动选择可用且最快的站点</small></span></button><button class="tool" data-action="show-toast" data-message="诊断结果：会话正常，订阅可访问"><span class="tool-icon">⌕</span><span><strong>网页结构诊断</strong><small>查看登录、会话、发现订阅各阶段</small></span></button><button class="tool" data-action="show-toast" data-message="已打开隐私设置"><span class="tool-icon">⌑</span><span><strong>隐私与安全</strong><small>管理会话、日志和地址脱敏</small></span></button></div><div class="section"><div class="panel"><h3>当前适配器状态</h3><p>机场网页只负责登录和验证，统一业务状态由应用呈现。</p><div class="account-detail"><div class="detail-line"><span>iKun 入口探测</span><strong style="color:var(--green)">正常 · 182 ms</strong></div><div class="detail-line"><span>iKun 会话读取</span><strong style="color:var(--green)">Cookie 有效</strong></div><div class="detail-line"><span>iKun 订阅发现</span><strong style="color:var(--green)">Clash 地址已验证</strong></div><div class="detail-line"><span>Pokemon 账户同步</span><strong style="color:var(--amber)">等待绑定</strong></div></div></div></div></section>
+    </div></main>
+  </div>
+
+  <nav class="mobile-nav" aria-label="移动端导航"><button class="active" data-page="dashboard"><span class="nav-icon">▦</span>总览</button><button data-page="airports"><span class="nav-icon">◉</span>机场</button><button data-page="subscriptions"><span class="nav-icon">↗</span>订阅</button><button data-page="nodes"><span class="nav-icon">⌁</span>节点</button><button data-page="tools"><span class="nav-icon">✣</span>工具</button></nav>
+
+  <div class="modal-backdrop" id="modal-backdrop"><div class="modal" id="modal"></div></div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const state = {
+      page: 'dashboard',
+      accounts: {
+        ikun: { name: 'iKun', color: 'indigo', connected: true, account: '4455••••@qq.com', traffic: '38.6 / 200 GB', expiry: '2026-11-18', checkin: '今日已签到', subscription: '已连接到节点列表', url: 'https://ikuuu.top/sub/demo-token/clash', status: 'ok' },
+        pokemon: { name: 'Pokemon', color: 'teal', connected: false, account: '未绑定账户', traffic: '等待同步', expiry: '—', checkin: '未绑定', subscription: '等待登录后自动发现', url: '', status: 'off' }
+      },
+      profiles: [
+        { name: 'iKun 主订阅', source: 'iKun · 自动发现', url: 'https://ikuuu.top/sub/demo-token/clash', nodes: '46 个节点', updated: '3 分钟前', active: true, type: 'auto' },
+        { name: '备用测试订阅', source: '手动导入', url: 'https://example.com/subscription/demo', nodes: '18 个节点', updated: '昨天', active: false, type: 'manual' }
+      ]
+    };
+
+    const titles = { dashboard: ['总览', '多个机场，一个清晰的管理入口。'], airports: ['机场', '账户、签到和订阅来源的管理中心。'], subscriptions: ['订阅', '自动发现和手动导入的订阅，都在这里管理。'], nodes: ['节点', 'Mihomo 当前连接状态和策略组。'], tools: ['工具', '诊断、备份和隐私设置集中在这里。'] };
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+    function render() {
+      const [title, subtitle] = titles[state.page];
+      $('#page-title').textContent = title;
+      $('#page-subtitle').textContent = subtitle;
+      $$('.page').forEach(page => page.hidden = page.dataset.pageView !== state.page);
+      $$('[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === state.page));
+      renderAirports(); renderProfiles();
+      $('#bound-count').textContent = `${Object.values(state.accounts).filter(x => x.connected).length} / 2`;
+      $('#pending-count').textContent = `${Object.values(state.accounts).filter(x => !x.connected).length} 项`;
+      $('#profile-count').textContent = state.profiles.length;
+    }
+
+    function airportCard(kind) {
+      const a = state.accounts[kind];
+      const connected = a.connected;
+      const subClass = a.color === 'teal' ? ' teal' : '';
+      return `<article class="airport-card">
+        <div class="airport-head"><div class="airport-logo ${a.color}">${kind === 'ikun' ? 'ϟ' : '◉'}</div><div class="airport-title"><h4>${a.name}</h4><p>${connected ? a.account : '登录后自动同步账户、订阅与签到'}</p></div><span class="status ${a.status}">${connected ? '已绑定' : '未绑定'}</span></div>
+        <div class="airport-info"><div class="info-box"><span>流量</span><strong>${a.traffic}</strong></div><div class="info-box"><span>到期时间</span><strong>${a.expiry}</strong></div><div class="info-box"><span>每日签到</span><strong>${a.checkin}</strong></div><div class="info-box"><span>入口状态</span><strong>${connected ? '最快入口已选' : '等待登录'}</strong></div></div>
+        <div class="sub-state${subClass}"><span class="sub-icon">↗</span><div><strong>${a.subscription}</strong><small>${connected ? (a.url || '已登录，正在查找订阅地址') : '绑定后自动发现 Clash/Mihomo 地址'}</small></div><span>›</span></div>
+        <div class="card-actions"><button class="btn small" data-action="${connected ? 'open-subscription' : 'open-login'}" data-kind="${kind}">${connected ? '订阅中心' : '绑定账户'}</button><button class="btn small" data-action="sync-account" data-kind="${kind}">${connected ? '同步' : '查看流程'}</button><button class="btn small ${a.color === 'teal' ? 'teal' : ''}" data-action="checkin" data-kind="${kind}">${connected ? '签到' : '了解'}</button></div>
+      </article>`;
+    }
+
+    function renderAirports() {
+      $('#dashboard-airports').innerHTML = airportCard('ikun') + airportCard('pokemon');
+      $('#airport-page-list').innerHTML = airportCard('ikun') + airportCard('pokemon');
+    }
+
+    function renderProfiles() {
+      $('#profile-list').innerHTML = state.profiles.map((p, index) => `<div class="profile-card"><span class="profile-icon">${p.active ? '✓' : '↗'}</span><div><h4>${p.name} ${p.active ? '<span class="status ok" style="font-size:10px;padding:4px 7px;margin-left:5px">当前</span>' : ''}</h4><p>${p.source} · ${p.url}</p></div><div class="profile-meta"><div>${p.nodes}</div><div>${p.updated}</div><button class="btn small" style="margin-top:8px" data-action="copy-profile" data-index="${index}">复制</button></div></div>`).join('');
+    }
+
+    function showToast(message) { const toast = $('#toast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => toast.classList.remove('show'), 2400); }
+    function closeModal() { $('#modal-backdrop').classList.remove('open'); $('#modal').innerHTML = ''; }
+    function openModal(html) { $('#modal').innerHTML = html; $('#modal-backdrop').classList.add('open'); }
+
+    function openLogin(kind) {
+      const a = state.accounts[kind];
+      openModal(`<div class="modal-head"><div><h3>绑定 ${a.name}</h3><p>登录机场后，钥仓会自动同步资料并发现订阅。</p></div><button class="close" data-action="close-modal">×</button></div><div class="step-list" id="login-steps"><div class="step active"><span class="step-dot">1</span>安全网页登录</div><div class="step"><span class="step-dot">2</span>读取登录会话</div><div class="step"><span class="step-dot">3</span>发现并验证订阅</div><div class="step"><span class="step-dot">4</span>自动导入节点配置</div></div><div class="modal-box"><strong>这是产品流程模拟</strong><small>真实版本这里会嵌入机场官方登录页面，完成验证码后自动回到钥仓，不需要用户手动复制订阅。</small></div><div class="modal-actions"><button class="btn" data-action="close-modal">取消</button><button class="btn primary" data-action="simulate-login" data-kind="${kind}">模拟登录并自动导入</button></div>`);
+    }
+
+    function openSubscription(kind) {
+      const a = state.accounts[kind];
+      if (!a.connected) { openLogin(kind); return; }
+      openModal(`<div class="modal-head"><div><h3>${a.name} · 订阅中心</h3><p>登录会话和订阅来源已经关联。</p></div><button class="close" data-action="close-modal">×</button></div><div class="modal-box" style="margin-top:20px"><strong>已自动导入到「${kind === 'ikun' ? 'iKun 主订阅' : 'Pokemon 主订阅'}」</strong><small>节点列表会使用这个地址自动更新。请求头会随机场登录会话保存。</small><label style="display:block;margin-top:16px;color:var(--muted);font-size:12px">订阅地址</label><input class="input" id="modal-url" readonly value="${a.url}"></div><div class="modal-actions"><button class="btn" data-action="copy-kind" data-kind="${kind}">复制订阅地址</button><button class="btn primary" data-action="show-toast" data-message="订阅更新任务已开始">立即更新订阅</button></div>`);
+    }
+
+    function addSubscription() {
+      openModal(`<div class="modal-head"><div><h3>添加订阅</h3><p>手动订阅是自动发现之外的备用入口。</p></div><button class="close" data-action="close-modal">×</button></div><label style="display:block;margin-top:20px;color:var(--muted);font-size:12px">订阅名称</label><input class="input" id="new-name" placeholder="例如：Pokemon 主订阅"><label style="display:block;margin-top:15px;color:var(--muted);font-size:12px">订阅链接</label><input class="input" id="new-url" placeholder="粘贴完整的 https:// 地址"><div class="modal-box" style="margin-top:14px"><strong>支持 Clash / Mihomo / V2Ray</strong><small>导入成功后会出现在订阅仓，并可设置为当前运行配置。</small></div><div class="modal-actions"><button class="btn" data-action="close-modal">取消</button><button class="btn primary" data-action="save-manual">导入订阅</button></div>`);
+    }
+
+    async function copyText(text) { try { await navigator.clipboard.writeText(text); } catch (_) { const input = document.createElement('textarea'); input.value = text; document.body.appendChild(input); input.select(); document.execCommand('copy'); input.remove(); } showToast('订阅地址已复制'); }
+
+    function simulateLogin(kind) {
+      const steps = $$('#login-steps .step');
+      const button = $('[data-action="simulate-login"]');
+      button.disabled = true; button.textContent = '正在绑定…';
+      steps[0].classList.add('done'); steps[0].classList.remove('active');
+      let current = 1;
+      const timer = setInterval(() => {
+        if (current > 3) { clearInterval(timer); const a = state.accounts[kind]; a.connected = true; a.status = 'ok'; a.account = kind === 'ikun' ? '4455••••@qq.com' : 'vault-user@pokemon'; a.traffic = kind === 'ikun' ? '38.6 / 200 GB' : '12.4 / 100 GB'; a.expiry = kind === 'ikun' ? '2026-11-18' : '2026-10-06'; a.checkin = '今日已签到'; a.subscription = '已连接到节点列表'; a.url = kind === 'ikun' ? 'https://ikuuu.top/sub/demo-token/clash' : 'https://web2.52pokemon.cc/sub/demo-token/clash'; if (!state.profiles.some(p => p.source.startsWith(a.name))) state.profiles.unshift({ name: `${a.name} 主订阅`, source: `${a.name} · 自动发现`, url: a.url, nodes: kind === 'ikun' ? '46 个节点' : '28 个节点', updated: '刚刚', active: false, type: 'auto' }); closeModal(); render(); showToast(`${a.name} 已登录，订阅已自动导入`); return; }
+        steps[current - 1].classList.add('done'); steps[current - 1].classList.remove('active'); steps[current].classList.add('active'); current++;
+      }, 700);
+    }
+
+    function bindEvents() {
+      document.addEventListener('click', event => {
+        const target = event.target.closest('[data-action], [data-page]'); if (!target) return;
+        if (target.dataset.page) { state.page = target.dataset.page; render(); return; }
+        const action = target.dataset.action;
+        if (action === 'go-page') { state.page = target.dataset.pageTarget; render(); }
+        if (action === 'close-modal') closeModal();
+        if (action === 'open-login') openLogin(target.dataset.kind);
+        if (action === 'open-subscription') openSubscription(target.dataset.kind);
+        if (action === 'add-subscription') addSubscription();
+        if (action === 'simulate-login') simulateLogin(target.dataset.kind);
+        if (action === 'copy-kind') copyText(state.accounts[target.dataset.kind].url);
+        if (action === 'copy-profile') copyText(state.profiles[Number(target.dataset.index)].url);
+        if (action === 'sync-account') { const a = state.accounts[target.dataset.kind]; showToast(a.connected ? `${a.name} 账户和订阅已同步` : `请先绑定 ${a.name}`); }
+        if (action === 'checkin') { const a = state.accounts[target.dataset.kind]; showToast(a.connected ? `${a.name} 今日签到成功` : `请先绑定 ${a.name}`); }
+        if (action === 'sync-all') showToast('正在同步全部机场和订阅…');
+        if (action === 'toggle-runtime') showToast('代理已停止（原型演示）');
+        if (action === 'show-toast') showToast(target.dataset.message);
+        if (action === 'save-manual') { const name = $('#new-name')?.value.trim() || '新订阅'; const url = $('#new-url')?.value.trim(); if (!url) { showToast('请先粘贴订阅链接'); return; } state.profiles.unshift({ name, source: '手动导入', url, nodes: '等待更新', updated: '刚刚', active: false, type: 'manual' }); closeModal(); state.page = 'subscriptions'; render(); showToast('订阅已导入订阅仓'); }
+      });
+      $('#modal-backdrop').addEventListener('click', event => { if (event.target.id === 'modal-backdrop') closeModal(); });
+    }
+
+    bindEvents(); render();
+  </script>
+</body>
+</html>
