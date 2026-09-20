@@ -157,7 +157,7 @@ class _ProxiesViewState extends ConsumerState<ProxiesView> {
       isLoading: isLoading,
       resizeToAvoidBottomInset: false,
       appBarActions: _buildActions(context),
-      title: context.appLocalizations.proxies,
+      title: context.appLocalizations.nodes,
       titleVariant: SlAppBarTitleVariant.root,
       backgroundColor: surge.background,
       body: ColoredBox(color: surge.background, child: const ProxiesListView()),

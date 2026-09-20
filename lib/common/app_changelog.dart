@@ -12,6 +12,15 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.6',
+    date: '2026-09-20',
+    changes: [
+      '新增独立机场账户仓页面，统一承载账户、签到和订阅来源状态',
+      '移动端导航调整为总览、机场、节点、订阅、工具',
+      '节点页和订阅页使用更清晰的业务语义，保持 Mihomo 运行能力不变',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.5',
     date: '2026-09-20',
     changes: [

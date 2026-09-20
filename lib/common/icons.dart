@@ -15,6 +15,7 @@ abstract final class SurgeIconSize {
 abstract final class SurgeIcons {
   // Navigation
   static const dashboard = Icons.space_dashboard_rounded;
+  static const airports = Icons.flight_takeoff_rounded;
   static const proxies = Icons.article_rounded;
   static const profiles = Icons.folder_rounded;
   static const requests = Icons.view_timeline_rounded;
@@ -26,12 +27,14 @@ abstract final class SurgeIcons {
 
   // Navigation — filled variants (selected state / original style)
   static const dashboardFilled = Icons.space_dashboard;
+  static const airportsFilled = Icons.flight_takeoff;
   static const proxiesFilled = Icons.article;
   static const profilesFilled = Icons.folder;
   static const toolsFilled = Icons.construction;
 
   // Navigation — outlined variants (unselected state)
   static const dashboardOutlined = Icons.space_dashboard_outlined;
+  static const airportsOutlined = Icons.flight_takeoff_outlined;
   static const proxiesOutlined = Icons.article_outlined;
   static const profilesOutlined = Icons.folder_outlined;
   static const toolsOutlined = Icons.construction_outlined;
@@ -41,6 +44,7 @@ abstract final class SurgeIcons {
   ) {
     return switch (pageLabel) {
       PageLabel.dashboard => (dashboardFilled, dashboardOutlined),
+      PageLabel.airports => (airportsFilled, airportsOutlined),
       PageLabel.proxies => (proxiesFilled, proxiesOutlined),
       PageLabel.profiles => (profilesFilled, profilesOutlined),
       PageLabel.tools => (toolsFilled, toolsOutlined),
@@ -51,6 +55,7 @@ abstract final class SurgeIcons {
   static IconData bottomNavigation(PageLabel pageLabel) {
     return switch (pageLabel) {
       PageLabel.dashboard => dashboard,
+      PageLabel.airports => airports,
       PageLabel.proxies => proxies,
       PageLabel.profiles => profiles,
       PageLabel.tools => tools,

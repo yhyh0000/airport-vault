@@ -276,6 +276,7 @@ class MessageLookup extends MessageLookupByLibrary {
     "darkMonochrome": MessageLookupByLibrary.simpleMessage("灰黑单色"),
     "darkMonochromeStyle": MessageLookupByLibrary.simpleMessage("灰黑单色风格"),
     "dashboard": MessageLookupByLibrary.simpleMessage("仪表盘"),
+    "airports": MessageLookupByLibrary.simpleMessage("机场"),
     "dataChangedSave": MessageLookupByLibrary.simpleMessage("检测到数据有更改，是否保存"),
     "daysAgo": m1,
     "defaultNameserver": MessageLookupByLibrary.simpleMessage("默认域名服务器"),

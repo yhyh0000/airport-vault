@@ -356,6 +356,7 @@ class MessageLookup extends MessageLookupByLibrary {
       "Dark monochrome",
     ),
     "dashboard": MessageLookupByLibrary.simpleMessage("Home"),
+    "airports": MessageLookupByLibrary.simpleMessage("Airports"),
     "dataChangedSave": MessageLookupByLibrary.simpleMessage(
       "Data changed. Save?",
     ),

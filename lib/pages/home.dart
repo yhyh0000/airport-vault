@@ -25,6 +25,16 @@ bool _keepFor(NavigationItem item) {
   return item.keep;
 }
 
+String _navigationLabel(BuildContext context, PageLabel label) {
+  return switch (label) {
+    PageLabel.dashboard => context.appLocalizations.dashboard,
+    PageLabel.airports => context.appLocalizations.airports,
+    PageLabel.proxies => context.appLocalizations.nodes,
+    PageLabel.profiles => context.appLocalizations.subscriptions,
+    _ => Intl.message(label.name),
+  };
+}
+
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
@@ -57,7 +67,7 @@ class HomePage extends StatelessWidget {
                         return SurgeBottomNavItem(
                           icon: icon,
                           iconOutlined: iconOutlined,
-                          label: Intl.message(item.label.name),
+                          label: _navigationLabel(context, item.label),
                         );
                       },
                     )

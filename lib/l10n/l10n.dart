@@ -74,6 +74,11 @@ class AppLocalizations {
     return Intl.message('Home', name: 'dashboard', desc: '', args: []);
   }
 
+  /// `Airports`
+  String get airports {
+    return Intl.message('Airports', name: 'airports', desc: '', args: []);
+  }
+
   /// `Proxies`
   String get proxies {
     return Intl.message('Proxies', name: 'proxies', desc: '', args: []);

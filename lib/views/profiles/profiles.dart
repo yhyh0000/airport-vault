@@ -128,7 +128,7 @@ class _ProfilesViewState extends State<ProfilesView> {
         return CommonScaffold(
           backgroundColor: surge.background,
           isLoading: isLoading,
-          title: context.appLocalizations.profiles,
+          title: context.appLocalizations.subscriptions,
           appBarActions: _buildActions(state.profiles),
           titleVariant: SlAppBarTitleVariant.root,
           body: state.profiles.isEmpty

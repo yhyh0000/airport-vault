@@ -17,6 +17,12 @@ class Navigation {
             const DashboardView(key: GlobalObjectKey(PageLabel.dashboard)),
       ),
       NavigationItem(
+        icon: const Icon(SurgeIcons.airports),
+        label: PageLabel.airports,
+        builder: (_) =>
+            const AirportsView(key: GlobalObjectKey(PageLabel.airports)),
+      ),
+      NavigationItem(
         icon: const Icon(SurgeIcons.proxies),
         label: PageLabel.proxies,
         builder: (_) =>
