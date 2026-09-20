@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:fl_clash/common/http.dart';
+import 'package:fl_clash/common/string.dart';
 
 import 'airport_models.dart';
 
@@ -265,7 +266,7 @@ class AirportService {
     if (direct != null &&
         direct.isNotEmpty &&
         (direct.startsWith('http://') || direct.startsWith('https://'))) {
-      return direct;
+      return normalizeProfileSourceUrl(direct, baseUrl: session.baseUrl);
     }
     final data = _asMap(json['data']) ?? json;
     final value = _stringValue(
@@ -577,7 +578,8 @@ class AirportService {
     for (final match in directAttributes.allMatches(html)) {
       final value = match.group(1)?.trim();
       if (value != null && value.isNotEmpty) {
-        return _absoluteUrl(value, baseUrl);
+        final resolved = _absoluteUrl(value, baseUrl);
+        if (resolved != null) return resolved;
       }
     }
     final patterns = [
@@ -595,15 +597,8 @@ class AirportService {
     return value == null ? null : _absoluteUrl(value, baseUrl);
   }
 
-  String _absoluteUrl(String value, String baseUrl) {
-    value = value
-        .replaceAll('&amp;', '&')
-        .replaceAll('&quot;', '"')
-        .replaceAll('&#39;', "'")
-        .trim();
-    if (value.startsWith('http://') || value.startsWith('https://')) return value;
-    final base = Uri.parse(baseUrl);
-    return base.resolve(value).toString();
+  String? _absoluteUrl(String value, String baseUrl) {
+    return normalizeProfileSourceUrl(value, baseUrl: baseUrl);
   }
 
   String _stripHtml(String value) {

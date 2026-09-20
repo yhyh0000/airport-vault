@@ -1,4 +1,5 @@
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/services/airport/airport.dart';
@@ -408,6 +409,18 @@ class _AirportAccountPanel extends ConsumerWidget {
     String url,
     AirportSession session,
   ) async {
+    final normalizedUrl = normalizeProfileSourceUrl(
+      url,
+      baseUrl: session.baseUrl,
+    );
+    if (normalizedUrl == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('机场返回的订阅地址无效，请先刷新账户数据')),
+        );
+      }
+      return;
+    }
     final headers = <String, String>{
       if (session.cookie.trim().isNotEmpty) 'Cookie': session.cookie,
       if (session.accessToken != null)
@@ -417,7 +430,11 @@ class _AirportAccountPanel extends ConsumerWidget {
     };
     final profile = await ref
         .read(profilesActionProvider.notifier)
-        .addProfileFormURL(url, label: preset.name, headers: headers);
+        .addProfileFormURL(
+          normalizedUrl,
+          label: preset.name,
+          headers: headers,
+        );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

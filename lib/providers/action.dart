@@ -4183,6 +4183,10 @@ class ProfilesAction extends _$ProfilesAction {
     bool autoUpdate = true,
     Duration autoUpdateDuration = defaultUpdateDuration,
   }) async {
+    final normalizedUrl = normalizeProfileSourceUrl(url);
+    if (normalizedUrl == null) {
+      throw const InvalidProfileSourceUrl();
+    }
     if (globalState.navigatorKey.currentState?.canPop() ?? false) {
       globalState.navigatorKey.currentState?.popUntil((route) => route.isFirst);
     }
@@ -4193,7 +4197,7 @@ class ProfilesAction extends _$ProfilesAction {
         final normalizedLabel = label?.trim();
         final profile =
             Profile.normal(
-              url: url,
+              url: normalizedUrl,
               label: normalizedLabel?.isNotEmpty == true
                   ? normalizedLabel
                   : null,

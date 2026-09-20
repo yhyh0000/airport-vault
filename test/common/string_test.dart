@@ -28,6 +28,29 @@ void main() {
     });
   });
 
+  group('normalizeProfileSourceUrl', () {
+    test('keeps a valid absolute URL', () {
+      expect(
+        normalizeProfileSourceUrl('https://sub.example/link/token'),
+        'https://sub.example/link/token',
+      );
+    });
+
+    test('resolves an airport relative link', () {
+      expect(
+        normalizeProfileSourceUrl(
+          '/link/token',
+          baseUrl: 'https://ikuuu.top',
+        ),
+        'https://ikuuu.top/link/token',
+      );
+    });
+
+    test('rejects a URL without a host', () {
+      expect(normalizeProfileSourceUrl('https:///link/token'), isNull);
+    });
+  });
+
   group('StringExtension.splitByMultipleSeparators', () {
     test('splits on comma', () {
       final result = 'a,b,c'.splitByMultipleSeparators;

@@ -12,6 +12,14 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.3',
+    date: '2026-09-20',
+    changes: [
+      '修复机场订阅地址为空或缺少 host 时导入配置报 DioException',
+      '兼容 /link/、//host/link/ 和 HTML 转义订阅地址，并增加导入前地址校验',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.2',
     date: '2026-09-20',
     changes: [

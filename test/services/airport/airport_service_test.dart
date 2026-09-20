@@ -29,6 +29,7 @@ void main() {
               <html><body>
                 <div class="traffic">今日已用<br><span class="counter">2</span> MB</div>
                 <div class="traffic">剩余流量 <span class="counter">3</span> GB</div>
+                <a data-clipboard-text="https:///link/invalid">无效地址</a>
                 <a data-clipboard-text="https://sub.example/link/secret-token">一键订阅</a>
               </body></html>
             '''),

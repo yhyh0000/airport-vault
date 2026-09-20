@@ -4,6 +4,59 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:fl_clash/common/common.dart';
 
+/// Normalizes a profile/subscription URL before it reaches Dio.
+///
+/// Airport panels sometimes expose `/link/...`, `//host/link/...`, or an
+/// HTML-escaped URL instead of a fully-qualified URL. Dio accepts the string
+/// type but fails later with the much less useful "No host specified" error.
+String? normalizeProfileSourceUrl(
+  String value, {
+  String? baseUrl,
+}) {
+  var candidate = value
+      .trim()
+      .replaceAll('&amp;', '&')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&#39;', "'")
+      .replaceAll(RegExp(r'[\r\n\t]'), '');
+  if (candidate.isEmpty) return null;
+
+  final candidates = <String>[candidate];
+  try {
+    final decoded = Uri.decodeFull(candidate);
+    if (decoded != candidate) candidates.add(decoded);
+  } catch (_) {}
+
+  final base = baseUrl == null ? null : Uri.tryParse(baseUrl.trim());
+  for (final raw in candidates) {
+    candidate = raw;
+    if (candidate.startsWith('//')) candidate = 'https:$candidate';
+    if (candidate.startsWith('www.')) candidate = 'https://$candidate';
+
+    final direct = Uri.tryParse(candidate);
+    if (_isHttpUri(direct)) return direct!.toString();
+
+    if (base != null && _isHttpUri(base) && !candidate.contains('://')) {
+      final resolved = base.resolve(candidate);
+      if (_isHttpUri(resolved)) return resolved.toString();
+    }
+  }
+  return null;
+}
+
+bool _isHttpUri(Uri? uri) {
+  if (uri == null || uri.host.isEmpty) return false;
+  final scheme = uri.scheme.toLowerCase();
+  return scheme == 'http' || scheme == 'https';
+}
+
+final class InvalidProfileSourceUrl implements Exception {
+  const InvalidProfileSourceUrl();
+
+  @override
+  String toString() => '订阅地址无效，请检查是否为完整的 http(s) 地址';
+}
+
 extension StringExtension on String {
   bool get isUrl {
     final uri = Uri.tryParse(this);
