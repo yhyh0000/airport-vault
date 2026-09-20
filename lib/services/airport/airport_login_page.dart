@@ -440,10 +440,12 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
                     runSpacing: 8,
                     children: [
                       _buildHeroPill(
+                        context: context,
                         icon: Icons.cloud_rounded,
                         label: widget.site.title,
                       ),
                       _buildHeroPill(
+                        context: context,
                         icon: Icons.sync_rounded,
                         label: '同步流量与签到',
                       ),
@@ -458,7 +460,11 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
     );
   }
 
-  Widget _buildHeroPill({required IconData icon, required String label}) {
+  Widget _buildHeroPill({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -473,11 +479,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
           const SizedBox(width: 5),
           Text(
             label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
+            style: context.typography.badgeLabel.copyWith(color: Colors.white),
           ),
         ],
       ),
@@ -516,14 +518,12 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
                         '安全登录',
                         style: context.typography.cardTitle.copyWith(
                           color: surge.textPrimary,
-                          fontSize: 14,
                         ),
                       ),
                       Text(
                         '登录信息仅用于绑定当前机场账户',
                         style: context.typography.compactDescription.copyWith(
                           color: surge.textSecondary,
-                          fontSize: 11,
                         ),
                       ),
                     ],
