@@ -12,6 +12,14 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.7',
+    date: '2026-09-21',
+    changes: [
+      '修复宝可梦 V2Board 可选接口返回 HTTP 404/405 时无法回退的问题',
+      '补充机场接口异常回退的自动化回归测试',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.6.4',
     date: '2026-09-21',
     changes: [
