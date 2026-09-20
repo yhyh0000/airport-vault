@@ -615,7 +615,7 @@ class AirportService {
 
   ({int upload, int download, int total}) _parseTraffic(String source) {
     final text = _stripHtml(source);
-    var upload = _bytesAfter(text, const ['upload', '上传']);
+    final upload = _bytesAfter(text, const ['upload', '上传']);
     var download = _bytesAfter(text, const ['download', '下载']);
     var total = _bytesAfter(text, const [
       'total',

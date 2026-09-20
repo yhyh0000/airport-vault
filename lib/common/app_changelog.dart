@@ -12,6 +12,14 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.4',
+    date: '2026-09-21',
+    changes: [
+      '完成正式版 Flutter 分析与双架构构建链路修复',
+      '机场账户仓 UI 重设计进入正式 APK 版本',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.6.3',
     date: '2026-09-21',
     changes: [

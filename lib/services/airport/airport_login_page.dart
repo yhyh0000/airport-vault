@@ -311,7 +311,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
       : const Color(0xFF5B61FF);
 
   String _webThemeCss(Color accent) {
-    final accentHex = accent.value.toRadixString(16).substring(2);
+    final accentHex = accent.toARGB32().toRadixString(16).substring(2);
     return '''
       :root { color-scheme: light; }
       html, body {

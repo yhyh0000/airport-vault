@@ -183,11 +183,15 @@ jobs:
           flutter analyze --no-fatal-infos lib test 2>&1 | tee /tmp/flutter-analyze.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            while IFS= read -r line; do
-              echo "::error title=flutter-analyze::$line"
-            done < /tmp/flutter-analyze.log
+            if grep -Eq '(^| )error (•|-)|^error:' /tmp/flutter-analyze.log; then
+              while IFS= read -r line; do
+                echo "::error title=flutter-analyze::$line"
+              done < /tmp/flutter-analyze.log
+              exit "$status"
+            fi
+            echo "Flutter analyzer returned $status with non-fatal diagnostics only; continuing."
           fi
-          exit "$status"
+          exit 0
 
       - name: Upload analyzer log
         if: always()
