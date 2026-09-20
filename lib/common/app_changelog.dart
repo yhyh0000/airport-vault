@@ -12,6 +12,15 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.0',
+    date: '2026-09-20',
+    changes: [
+      '重设计机场账户仓页面，新增绑定、订阅发现和待处理状态总览',
+      '机场卡片新增订阅状态、签到状态与流量进度展示',
+      '保留 iKun / Pokemon 登录、同步、签到、订阅导入和 8.8 兑换闭环',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.12',
     date: '2026-09-20',
     changes: [

@@ -47,6 +47,13 @@ class AirportOverview extends ConsumerWidget {
     final surge = SurgeTheme.of(context);
     final profiles = ref.watch(profilesProvider);
     final accounts = ref.watch(airportAccountsProvider);
+    final boundCount = _presets
+        .where((preset) => _account(accounts, preset).isConnected)
+        .length;
+    final attentionCount = _presets.where((preset) {
+      final account = _account(accounts, preset);
+      return account.error != null || account.requiresLogin;
+    }).length;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -54,16 +61,23 @@ class AirportOverview extends ConsumerWidget {
           children: [
             Expanded(
               child: Text(
-                '机场业务',
+                '账户与订阅',
                 style: context.typography.sectionTitle.copyWith(
                   color: surge.textPrimary,
                 ),
               ),
             ),
+            _SectionBadge(
+              label: attentionCount > 0
+                  ? '$attentionCount 项待处理'
+                  : '$boundCount/2 已绑定',
+              color: attentionCount > 0 ? surge.orange : surge.primary,
+            ),
+            const SizedBox(width: 4),
             TextButton.icon(
               onPressed: () => _showManualSubscriptionImport(context, ref),
               icon: const Icon(Icons.link_rounded, size: 18),
-              label: const Text('粘贴订阅链接'),
+              label: const Text('添加订阅'),
             ),
           ],
         ),
@@ -132,6 +146,28 @@ class AirportOverview extends ConsumerWidget {
   }
 }
 
+class _SectionBadge extends StatelessWidget {
+  const _SectionBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Text(
+        label,
+        style: context.typography.badgeLabel.copyWith(color: color),
+      ),
+    );
+  }
+}
+
 class _AirportPreset {
   const _AirportPreset({
     required this.kind,
@@ -193,6 +229,11 @@ class _AirportCard extends StatelessWidget {
             : connected
                 ? '已绑定${account.snapshot == null ? '' : ' · 已同步'}'
                 : '未绑定账户';
+    final subscriptionStatus = _subscriptionStatus();
+    final info = profile?.subscriptionInfo;
+    final total = account.snapshot?.total ?? info?.total ?? 0;
+    final used = account.snapshot?.used ??
+        ((info?.upload ?? 0) + (info?.download ?? 0));
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -236,7 +277,7 @@ class _AirportCard extends StatelessWidget {
                     Text(
                       status,
                       style: context.typography.badgeLabel.copyWith(
-                        color: account.error != null ? Colors.orange : preset.color,
+                        color: account.error != null ? surge.orange : preset.color,
                       ),
                     ),
                     if (connected && account.snapshot?.accountLabel != null) ...[
@@ -274,15 +315,52 @@ class _AirportCard extends StatelessWidget {
             ),
           ),
           if (connected) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                _AirportTag(
+                  icon: Icons.link_rounded,
+                  label: subscriptionStatus,
+                  color: account.snapshot?.subscriptionUrl != null
+                      ? surge.green
+                      : surge.textSecondary,
+                ),
+                _AirportTag(
+                  icon: account.snapshot?.checkinDone == true
+                      ? Icons.task_alt_rounded
+                      : Icons.event_available_rounded,
+                  label: account.snapshot?.checkinDone == true
+                      ? '今日已签到'
+                      : '待签到',
+                  color: account.snapshot?.checkinDone == true
+                      ? surge.green
+                      : surge.orange,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             Text(
               _accountSummary(),
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: context.typography.compactDescription.copyWith(
                 color: surge.textSecondary,
               ),
             ),
+            if (total > 0) ...[
+              const SizedBox(height: 7),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  minHeight: 6,
+                  value: (used / total).clamp(0.0, 1.0).toDouble(),
+                  backgroundColor: preset.color.withValues(alpha: 0.10),
+                  valueColor: AlwaysStoppedAnimation<Color>(preset.color),
+                ),
+              ),
+            ],
           ],
           if (account.error != null) ...[
             const SizedBox(height: 8),
@@ -314,6 +392,7 @@ class _AirportCard extends StatelessWidget {
                   ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: preset.color,
+                    backgroundColor: preset.color.withValues(alpha: 0.05),
                     side: BorderSide(color: preset.color.withValues(alpha: 0.45)),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -344,6 +423,47 @@ class _AirportCard extends StatelessWidget {
       _trafficText(),
       if (expiry != null) expiry,
     ].join(' · ');
+  }
+
+  String _subscriptionStatus() {
+    if (!account.isConnected) return '订阅待绑定';
+    if (account.snapshot?.subscriptionUrl == null) return '等待订阅发现';
+    if (profile != null) return '已接入节点列表';
+    return '订阅已发现';
+  }
+}
+
+class _AirportTag extends StatelessWidget {
+  const _AirportTag({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(99),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: context.typography.badgeLabel.copyWith(color: color),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -180,7 +180,7 @@ class AirportService {
     return AirportGiftCardResult(
       type: type,
       value: value,
-      message: _giftCardSuccessMessage(type!, value),
+      message: _giftCardSuccessMessage(type, value),
     );
   }
 
