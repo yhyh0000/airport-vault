@@ -12,6 +12,15 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.0',
+    date: '2026-09-20',
+    changes: [
+      '修复 iKun 登录成功后 HttpOnly 会话 Cookie 未完整回传，补充 Android 原生 CookieManager 读取与持久化',
+      '适配 iKun 当前用户页的今日已用、剩余流量和 /link/ 订阅地址结构',
+      '账户同步增加 /user/profile 兼容回退，提升不同 iKun 主题页面的数据读取成功率',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.4.0',
     date: '2026-09-20',
     changes: [

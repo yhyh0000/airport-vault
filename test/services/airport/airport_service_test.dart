@@ -20,7 +20,22 @@ void main() {
       final body = await utf8.decoder.bind(request).join();
       requests['${request.method} ${request.uri.path}'] = body;
 
-      if (mode == 'ikun' && request.uri.path == '/user') {
+      if ((mode == 'ikun' || mode == 'ikun-current') &&
+          request.uri.path == '/user') {
+        if (mode == 'ikun-current') {
+          await _write(
+            request,
+            _wrappedHtml('''
+              <html><body>
+                <div class="traffic">今日已用<br><span class="counter">2</span> MB</div>
+                <div class="traffic">剩余流量 <span class="counter">3</span> GB</div>
+                <a data-clipboard-text="https://sub.example/link/secret-token">一键订阅</a>
+              </body></html>
+            '''),
+            ContentType.html,
+          );
+          return;
+        }
         request.response.headers.add(
           'subscription-userinfo',
           'upload=1048576; download=2097152; total=10485760; expire=1893456000',
@@ -108,6 +123,23 @@ void main() {
     expect(checkedIn.checkinDone, isTrue);
     expect(checkedIn.message, '获得了 100 MB 流量');
     expect(requests['POST /user/checkin'], isEmpty);
+  });
+
+  test('iKun parses the current dashboard traffic labels and link subscription',
+      () async {
+    mode = 'ikun-current';
+    final session = AirportSession(
+      kind: AirportKind.ikun,
+      baseUrl: baseUrl,
+      cookie: 'session=ok',
+    );
+
+    final snapshot = await AirportService().sync(session);
+
+    expect(snapshot.upload, 0);
+    expect(snapshot.download, 2 * 1024 * 1024);
+    expect(snapshot.total, 3 * 1024 * 1024 * 1024 + 2 * 1024 * 1024);
+    expect(snapshot.subscriptionUrl, 'https://sub.example/link/secret-token');
   });
 
   test('Pokemon reads V2Board data, subscription and check-in result',

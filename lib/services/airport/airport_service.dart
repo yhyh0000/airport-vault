@@ -136,22 +136,45 @@ class AirportService {
     if (_looksLikeLoginPage(html, response.realUri.toString())) {
       throw const AirportAuthRequired('iKun 登录状态已失效，请重新绑定账户');
     }
+    // SSPanel themes expose the dashboard at /user and profile details at
+    // /user/profile.  Read both because the current iKun theme puts traffic
+    // on the dashboard but the account label/subscription controls can be on
+    // the profile page.
+    var extraHtml = '';
+    var profileUserInfo = '';
+    try {
+      final profile = await _request(session, '/user/profile');
+      if ((profile.statusCode ?? 500) < 400) {
+        final candidate = _unwrapHtml(profile.data?.toString() ?? '');
+        if (!_looksLikeLoginPage(candidate, profile.realUri.toString())) {
+          extraHtml = candidate;
+          profileUserInfo = profile.headers.value('subscription-userinfo') ?? '';
+        }
+      }
+    } on AirportRequestFailed {
+      // Older themes do not expose /user/profile.
+    }
+    final combined = '$html\n$extraHtml';
     final userInfo = response.headers.value('subscription-userinfo');
-    final metadata = '$html\n${userInfo ?? ''}';
+    final metadata = '$combined\n${userInfo ?? ''}\n$profileUserInfo';
     final traffic = _parseTraffic(metadata);
     return AirportSnapshot(
       kind: session.kind,
       baseUrl: session.baseUrl,
-      accountLabel: _firstMatch(html, [
+      accountLabel: _firstMatch(combined, [
         RegExp(r'(?:邮箱|email)[^<:：]{0,12}[:：]?\s*([^<\s]+@[^<\s]+)', caseSensitive: false),
+        RegExp(
+          r'''class=["'][^"']*user-name[^"']*["'][^>]*>\s*([^<]+)''',
+          caseSensitive: false,
+        ),
       ]),
       upload: traffic.upload,
       download: traffic.download,
       total: traffic.total,
       expireAt: _parseDate(metadata),
-      subscriptionUrl: _findSubscriptionUrl(html, session.baseUrl),
-      checkinDone: _containsCheckinMessage(_stripHtml(html)),
-      message: _firstMatch(html, [
+      subscriptionUrl: _findSubscriptionUrl(combined, session.baseUrl),
+      checkinDone: _containsCheckinMessage(_stripHtml(combined)),
+      message: _firstMatch(combined, [
         RegExp(r'(?:签到|checkin)[^<]{0,100}', caseSensitive: false),
       ]),
       fetchedAt: DateTime.now(),
@@ -428,10 +451,26 @@ class AirportService {
 
   ({int upload, int download, int total}) _parseTraffic(String source) {
     final text = _stripHtml(source);
+    var upload = _bytesAfter(text, const ['upload', '上传']);
+    var download = _bytesAfter(text, const ['download', '下载']);
+    var total = _bytesAfter(text, const [
+      'total',
+      '总流量',
+      '套餐流量',
+      'transfer_enable',
+    ]);
+
+    // iKun's current SSPanel theme renders these as text rather than the
+    // conventional upload/download/total labels.  Keep the values in the
+    // existing snapshot shape so the dashboard can still show used/total.
+    final today = _bytesAfter(text, const ['今日已用', 'today']);
+    final remaining = _bytesAfter(text, const ['剩余流量', 'remaining']);
+    if (download == 0 && today > 0) download = today;
+    if (total == 0 && remaining > 0) total = today + remaining;
     return (
-      upload: _bytesAfter(text, const ['upload', '上传']),
-      download: _bytesAfter(text, const ['download', '下载']),
-      total: _bytesAfter(text, const ['total', '总流量', '套餐流量', 'transfer_enable']),
+      upload: upload,
+      download: download,
+      total: total,
     );
   }
 
@@ -496,7 +535,7 @@ class AirportService {
 
   DateTime? _parseDate(String source) {
     final hit = RegExp(
-      r'(?:到期|expire|expired_at)[^0-9]{0,40}(\d{10,13}|20\d{2}[-/]\d{1,2}[-/]\d{1,2})',
+      r'(?:到期|有效期|有效至|expire|expired_at|expiry)[^0-9]{0,40}(\d{10,13}|20\d{2}[-/]\d{1,2}[-/]\d{1,2})',
       caseSensitive: false,
     ).firstMatch(source);
     if (hit == null) return null;
@@ -517,7 +556,7 @@ class AirportService {
 
   String? _findSubscriptionUrl(String html, String baseUrl) {
     final directAttributes = RegExp(
-      r'''(?:href|data-url|data-clipboard-text)=['"]([^'"]*(?:subscribe|subscription|clash|sing-box)[^'"]*)['"]''',
+      r'''(?:href|data-url|data-clipboard-text|value)=['"]([^'"]*(?:subscribe|subscription|clash|sing-box|/link/|/sub/)[^'"]*)['"]''',
       caseSensitive: false,
     );
     for (final match in directAttributes.allMatches(html)) {
@@ -529,6 +568,10 @@ class AirportService {
     final patterns = [
       RegExp(
         r'''href=["']([^"']+)["'][^>]{0,240}>[\s\S]{0,240}?(?:订阅|subscription|clash|sing-box)''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''(?:data-clipboard-text|data-url|href|value)=["']([^"']*(?:/link/|/sub/)[^"']*)["']''',
         caseSensitive: false,
       ),
       RegExp(r'''(?:订阅地址|订阅链接|subscription)[^a-z0-9]{0,40}(https?://[^\s"'<>]+)''', caseSensitive: false),

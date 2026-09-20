@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:fl_clash/services/airport/airport_models.dart';
 import 'package:fl_clash/widgets/surge/surge.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 /// Logs in through the airport's own web page so Geetest/Turnstile and other
@@ -24,6 +26,9 @@ class AirportLoginPage extends StatefulWidget {
 }
 
 class _AirportLoginPageState extends State<AirportLoginPage> {
+  static const MethodChannel _nativeWebViewChannel =
+      MethodChannel('airport_vault/webview');
+
   late final WebViewController _controller;
   final WebViewCookieManager _cookieManager = WebViewCookieManager();
   bool _pageLoading = true;
@@ -57,6 +62,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
               _pageLoading = false;
               _lastUrl = url;
             });
+            unawaited(_configureNativeWebView());
             unawaited(_applyWebTheme());
             _scheduleSessionDetection();
           },
@@ -72,7 +78,25 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
           },
         ),
       )
-      ..loadRequest(Uri.parse(widget.site.loginUrl(widget.baseUrl)));
+      ;
+    unawaited(_initializeWebView());
+  }
+
+  Future<void> _initializeWebView() async {
+    await _configureNativeWebView();
+    if (!mounted) return;
+    await _controller.loadRequest(Uri.parse(widget.site.loginUrl(widget.baseUrl)));
+  }
+
+  Future<void> _configureNativeWebView() async {
+    try {
+      await _nativeWebViewChannel.invokeMethod<void>('enableWebViewCookies');
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await _nativeWebViewChannel.invokeMethod<void>('configureChromeWebView');
+      }
+    } catch (_) {
+      // The Flutter WebView cookie manager remains as a fallback.
+    }
   }
 
   @override
@@ -141,6 +165,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
 
   Future<AirportSession?> _captureSession() async {
     try {
+      final currentUrl = await _currentUrl();
       final cookieValue = await _controller.runJavaScriptReturningResult(
         'document.cookie',
       );
@@ -148,13 +173,13 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
         'JSON.stringify(Object.fromEntries(Object.entries(localStorage)))',
       );
       final documentCookie = _decodeJsString(cookieValue);
-      final cookie = await _readCookies(documentCookie);
+      final cookie = await _readCookies(documentCookie, currentUrl);
       final storage = _decodeJsString(storageValue);
       final hasToken = _hasStorageToken(storage);
       if (cookie.trim().isEmpty && !hasToken) return null;
       return AirportSession(
         kind: widget.site.kind,
-        baseUrl: widget.baseUrl,
+        baseUrl: _originOf(currentUrl) ?? widget.baseUrl,
         cookie: cookie,
         localStorageJson: storage.isEmpty ? '{}' : storage,
         updatedAt: DateTime.now(),
@@ -164,26 +189,50 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
     }
   }
 
-  Future<String> _readCookies(String documentCookie) async {
+  Future<String> _readCookies(String documentCookie, String currentUrl) async {
     final values = <String, String>{};
-    for (final part in documentCookie.split(';')) {
-      final separator = part.indexOf('=');
-      if (separator <= 0) continue;
-      final name = part.substring(0, separator).trim();
-      final value = part.substring(separator + 1).trim();
-      if (name.isNotEmpty) values[name] = value;
-    }
-    try {
-      final cookies = await _cookieManager.getCookies(
-        domain: Uri.parse(widget.baseUrl),
-      );
-      for (final item in cookies) {
-        values[item.name] = item.value;
+    void collect(String raw) {
+      for (final part in raw.split(';')) {
+        final separator = part.indexOf('=');
+        if (separator <= 0) continue;
+        final name = part.substring(0, separator).trim();
+        final value = part.substring(separator + 1).trim();
+        if (name.isNotEmpty) values[name] = value;
       }
-    } catch (_) {
-      // document.cookie is still useful on older WebView implementations.
+    }
+
+    collect(documentCookie);
+    final urls = <String>{
+      currentUrl,
+      widget.baseUrl,
+      '${widget.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/',
+      '${widget.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/user',
+      '${widget.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/auth/login',
+    }..removeWhere((url) => url.trim().isEmpty);
+    for (final url in urls) {
+      try {
+        final native = await _nativeWebViewChannel.invokeMethod<String>(
+          'getCookies',
+          {'url': url},
+        );
+        collect(native ?? '');
+      } catch (_) {}
+      try {
+        final cookies = await _cookieManager.getCookies(domain: Uri.parse(url));
+        for (final item in cookies) {
+          values[item.name] = item.value;
+        }
+      } catch (_) {}
     }
     return values.entries.map((entry) => '${entry.key}=${entry.value}').join('; ');
+  }
+
+  String? _originOf(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null || uri.scheme.isEmpty || uri.host.isEmpty) return null;
+    return uri.hasPort
+        ? '${uri.scheme}://${uri.host}:${uri.port}'
+        : '${uri.scheme}://${uri.host}';
   }
 
   String _decodeJsString(Object? value) {
