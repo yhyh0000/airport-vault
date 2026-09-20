@@ -12,6 +12,11 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.3.1',
+    date: '2026-09-20',
+    changes: ['修正机场入口单元测试仍断言已过期域名的问题，恢复 Android 发布流水线'],
+  ),
+  AppChangelogEntry(
     version: 'v0.3.0',
     date: '2026-09-20',
     changes: [

@@ -2,11 +2,11 @@ import 'package:fl_clash/services/airport/airport_models.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('airport entries use the current official discovery domains', () {
+  test('airport entries use the current reachable discovery domains', () {
     final ikun = airportSite(AirportKind.ikun);
     final pokemon = airportSite(AirportKind.pokemon);
 
-    expect(ikun.defaultBaseUrl, 'https://ikuuu.top');
+    expect(ikun.defaultBaseUrl, 'https://ikuuu.pw');
     expect(pokemon.defaultBaseUrl, 'https://web2.52pokemon.cc');
     expect(pokemon.alternateBaseUrls, contains('https://love.52pokemon.cc'));
     expect(pokemon.loginUrl(pokemon.defaultBaseUrl),
