@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.10',
+    date: '2026-09-20',
+    changes: [
+      '修复宝可梦礼品卡兑换结果类型的空值分析问题',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.9',
     date: '2026-09-20',
     changes: [
