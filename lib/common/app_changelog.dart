@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.2',
+    date: '2026-09-20',
+    changes: [
+      '同步更新 iKun 当前主要域名的入口测试，确保 Release 构建正常通过',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.1',
     date: '2026-09-20',
     changes: [

@@ -6,7 +6,7 @@ void main() {
     final ikun = airportSite(AirportKind.ikun);
     final pokemon = airportSite(AirportKind.pokemon);
 
-    expect(ikun.defaultBaseUrl, 'https://ikuuu.pw');
+    expect(ikun.defaultBaseUrl, 'https://ikuuu.top');
     expect(pokemon.defaultBaseUrl, 'https://web2.52pokemon.cc');
     expect(pokemon.alternateBaseUrls, contains('https://love.52pokemon.cc'));
     expect(pokemon.loginUrl(pokemon.defaultBaseUrl),
