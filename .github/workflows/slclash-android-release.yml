@@ -180,17 +180,22 @@ jobs:
         shell: bash
         run: |
           set +e
-          flutter analyze --no-fatal-infos lib test 2>&1 | tee /tmp/flutter-analyze.log
+          flutter analyze --no-fatal-infos --format machine lib test 2>&1 | tee /tmp/flutter-analyze.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             while IFS= read -r line; do
-              lower_line="${line,,}"
-              case "$lower_line" in
-                *error*) echo "::error::$line" ;;
-              esac
+              echo "::error title=flutter-analyze::$line"
             done < /tmp/flutter-analyze.log
           fi
           exit "$status"
+
+      - name: Upload analyzer log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-analyze-log
+          path: /tmp/flutter-analyze.log
+          if-no-files-found: warn
 
       - name: Enforce typography source contract
         run: flutter test test/theme/typography/typography_source_contract_test.dart
