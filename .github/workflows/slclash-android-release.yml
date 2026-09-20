@@ -177,7 +177,21 @@ jobs:
         # Its tests belong to Yucon's own package (vault), not this SlClash
         # application, so analyzing the whole repository would report false
         # failures from that unmerged test suite.
-        run: flutter analyze --no-fatal-infos lib test
+        shell: bash
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos lib test 2>&1 | tee /tmp/flutter-analyze.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            while IFS= read -r line; do
+              case "$line" in
+                *" error - "*|*" error  - "*)
+                  echo "::error::$line"
+                  ;;
+              esac
+            done < /tmp/flutter-analyze.log
+          fi
+          exit "$status"
 
       - name: Enforce typography source contract
         run: flutter test test/theme/typography/typography_source_contract_test.dart
