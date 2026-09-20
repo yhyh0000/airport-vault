@@ -104,6 +104,26 @@ void main() {
         );
         return;
       }
+      if (mode == 'pokemon-405' &&
+          request.uri.path == '/api/v1/user/info') {
+        request.response.statusCode = HttpStatus.methodNotAllowed;
+        await request.response.close();
+        return;
+      }
+      if (mode == 'pokemon-405' && request.uri.path == '/') {
+        await _write(
+          request,
+          _wrappedHtml('''
+            <html><body>
+              email: fallback@example.com
+              <div>剩余流量 <span class="counter">3</span> GB</div>
+              <div>总流量 <span class="counter">10</span> GB</div>
+            </body></html>
+          '''),
+          ContentType.html,
+        );
+        return;
+      }
       if ((mode == 'pokemon' || mode == 'pokemon-gift') &&
           request.uri.path == '/api/v1/user/getSubscribe') {
         await _write(
@@ -218,6 +238,23 @@ void main() {
     expect(checkedIn.checkinDone, isTrue);
     expect(checkedIn.message, '签到成功');
     expect(requests['POST /api/v1/user/checkin'], isEmpty);
+  });
+
+  test('Pokemon falls back when an optional API answers HTTP 405', () async {
+    mode = 'pokemon-405';
+    final session = AirportSession(
+      kind: AirportKind.pokemon,
+      baseUrl: baseUrl,
+      cookie: 'session=ok',
+      localStorageJson: '{"token":"token-123"}',
+    );
+
+    final snapshot = await AirportService().sync(session);
+
+    expect(snapshot.accountLabel, 'fallback@example.com');
+    expect(snapshot.total, 10 * 1024 * 1024 * 1024);
+    expect(requests.containsKey('GET /api/v1/user/info'), isTrue);
+    expect(requests.containsKey('GET /'), isTrue);
   });
 
   test('Pokemon redeems the monthly gift card and sends the official field',

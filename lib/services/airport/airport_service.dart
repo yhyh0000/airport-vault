@@ -377,7 +377,16 @@ class AirportService {
         // iKun's legacy check-in endpoint rejects an empty JSON body with 405.
         // Sending no body also keeps Dio from adding Content-Type.
         data: data,
-        options: Options(method: method, headers: requestHeaders),
+        // Keep 4xx responses available to the airport adapter.  Pokemon has
+        // several V2Board/XBoard deployments where an optional endpoint
+        // answers 404/405 and the caller must fall back to HTML or another
+        // host.  Dio's default validation throws before those branches can
+        // inspect the status code.
+        options: Options(
+          method: method,
+          headers: requestHeaders,
+          validateStatus: (status) => status != null && status < 500,
+        ),
       );
     } on DioException catch (error) {
       throw AirportRequestFailed(
