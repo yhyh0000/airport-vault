@@ -152,10 +152,8 @@ importSublink('shadowrocket') -> oneclickImport('shadowrocket', decodedSubInfo.s
 POST https://api123.136470.xyz/api/v1/passport/auth/login
 Content-Type: multipart/form-data
 
-{
-  "email": "邮箱",
-  "password": "密码"
-}
+email=<邮箱>
+password=<密码>
 ```
 
 前端请求层从 `localStorage.auth_data` 读取认证值，并在后续请求发送：
