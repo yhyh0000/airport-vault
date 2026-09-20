@@ -155,7 +155,19 @@ class AirportService {
     } on AirportRequestFailed {
       // Older themes do not expose /user/profile.
     }
-    final combined = '$html\n$extraHtml';
+    var subscribeLogHtml = '';
+    try {
+      final subscribeLog = await _request(session, '/user/subscribe_log');
+      if ((subscribeLog.statusCode ?? 500) < 400) {
+        final candidate = _unwrapHtml(subscribeLog.data?.toString() ?? '');
+        if (!_looksLikeLoginPage(candidate, subscribeLog.realUri.toString())) {
+          subscribeLogHtml = candidate;
+        }
+      }
+    } on AirportRequestFailed {
+      // Subscription history is optional on older iKun themes.
+    }
+    final combined = '$html\n$extraHtml\n$subscribeLogHtml';
     final userInfo = response.headers.value('subscription-userinfo');
     final metadata = '$combined\n${userInfo ?? ''}\n$profileUserInfo';
     final traffic = _parseTraffic(metadata);
@@ -578,7 +590,7 @@ class AirportService {
     for (final match in directAttributes.allMatches(html)) {
       final value = match.group(1)?.trim();
       if (value != null && value.isNotEmpty) {
-        final resolved = _absoluteUrl(value, baseUrl);
+        final resolved = _subscriptionCandidate(value, baseUrl);
         if (resolved != null) return resolved;
       }
     }
@@ -592,9 +604,45 @@ class AirportService {
         caseSensitive: false,
       ),
       RegExp(r'''(?:订阅地址|订阅链接|subscription)[^a-z0-9]{0,40}(https?://[^\s"'<>]+)''', caseSensitive: false),
+      RegExp(
+        r'''["'](?:subscribe_url|subscribeUrl|subscription_url)["']\s*:\s*["']([^"']+)["']''',
+        caseSensitive: false,
+      ),
     ];
-    final value = _firstMatch(html, patterns);
-    return value == null ? null : _absoluteUrl(value, baseUrl);
+    for (final pattern in patterns) {
+      for (final match in pattern.allMatches(html)) {
+        final value = match.groupCount == 0 ? match.group(0) : match.group(1);
+        final resolved = value == null
+            ? null
+            : _subscriptionCandidate(value, baseUrl);
+        if (resolved != null) return resolved;
+      }
+    }
+    return null;
+  }
+
+  String? _subscriptionCandidate(String value, String baseUrl) {
+    final resolved = _absoluteUrl(value, baseUrl);
+    if (resolved == null) return null;
+    final uri = Uri.tryParse(resolved);
+    if (uri == null || uri.host.isEmpty) return null;
+    final path = uri.path.toLowerCase();
+    // /user/subscribe_log is a navigation page, not a Clash/XBoard source.
+    if (path.contains('/subscribe_log') ||
+        path == '/user/subscribe' ||
+        path.endsWith('/user/subscribe/')) {
+      return null;
+    }
+    final looksLikeSubscription = path.contains('/link/') ||
+        path.contains('/sub/') ||
+        path.contains('/subscribe') ||
+        path.contains('/subscription') ||
+        uri.queryParameters.keys.any(
+          (key) => const ['token', 'key', 'sub', 'subscription'].contains(
+            key.toLowerCase(),
+          ),
+        );
+    return looksLikeSubscription ? resolved : null;
   }
 
   String? _absoluteUrl(String value, String baseUrl) {

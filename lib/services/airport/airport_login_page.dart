@@ -307,11 +307,12 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
     return '''
       :root { color-scheme: light; }
       html, body {
-        background: #F2F3F7 !important;
+        background: #F6F7FB !important;
         color: #202124 !important;
       }
       body {
         margin: 0 !important;
+        padding: 12px 10px 22px !important;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
       }
       a { color: #$accentHex !important; }
@@ -320,6 +321,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
         border-radius: 12px !important;
         border: 1px solid #D9DCE5 !important;
         background: #FFFFFF !important;
+        color: #202124 !important;
         box-sizing: border-box !important;
       }
       button, [role="button"], input[type="submit"] {
@@ -335,68 +337,219 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
       [class*="card"], [class*="panel"] {
         border-radius: 18px !important;
         box-shadow: 0 6px 20px rgba(32, 33, 36, 0.08) !important;
+        border-color: #E4E7EF !important;
       }
+      label, .form-label { color: #5C6375 !important; font-weight: 600 !important; }
+      .text-muted, .help-block, small { color: #7B8292 !important; }
     ''';
   }
 
-  Widget _buildAirportHeader(BuildContext context, SurgeTheme surge) {
+  Widget _buildBrandHero(BuildContext context) {
     final icon = widget.site.kind == AirportKind.pokemon
         ? Icons.catching_pokemon_rounded
         : Icons.bolt_rounded;
+    final secondary = Color.lerp(_accentColor, Colors.black, 0.28)!;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-      child: SurgeCard(
-        padding: const EdgeInsets.all(14),
-        shadow: false,
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: _accentColor.withValues(alpha: 0.13),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, color: _accentColor, size: 23),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+      child: Container(
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [_accentColor, secondary],
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: _accentColor.withValues(alpha: 0.24),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
             ),
-            const SizedBox(width: 12),
-            Expanded(
+          ],
+        ),
+        child: Stack(
+          children: [
+            Positioned(
+              right: -34,
+              top: -46,
+              child: Container(
+                width: 150,
+                height: 150,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    width: 22,
+                  ),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 17, 18, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    widget.site.title,
-                    style: context.typography.cardTitle.copyWith(
-                      color: surge.textPrimary,
-                    ),
+                  Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.18),
+                          borderRadius: BorderRadius.circular(15),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.22),
+                          ),
+                        ),
+                        child: Icon(icon, color: Colors.white, size: 26),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '登录到机场钥仓',
+                              style: context.typography.cardTitle.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '统一管理你的机场账户与订阅',
+                              style: context.typography.compactDescription
+                                  .copyWith(
+                                color: Colors.white.withValues(alpha: 0.78),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.verified_user_rounded,
+                        color: Colors.white.withValues(alpha: 0.86),
+                        size: 22,
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '官方网页登录 · 登录后自动同步账户信息',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: context.typography.compactDescription.copyWith(
-                      color: surge.textSecondary,
-                    ),
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _buildHeroPill(
+                        icon: Icons.cloud_rounded,
+                        label: widget.site.title,
+                      ),
+                      _buildHeroPill(
+                        icon: Icons.sync_rounded,
+                        label: '同步流量与签到',
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-              decoration: BoxDecoration(
-                color: _accentColor.withValues(alpha: 0.11),
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: Text(
-                '安全绑定',
-                style: context.typography.badgeLabel.copyWith(
-                  color: _accentColor,
-                ),
-              ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildHeroPill({required IconData icon, required String label}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(99),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.88), size: 15),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWebViewSurface(BuildContext context, SurgeTheme surge) {
+    return SurgeCard(
+      padding: EdgeInsets.zero,
+      shadow: true,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 11, 14, 10),
+            child: Row(
+              children: [
+                Container(
+                  width: 28,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: _accentColor.withValues(alpha: 0.11),
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Icon(
+                    Icons.lock_rounded,
+                    color: _accentColor,
+                    size: 16,
+                  ),
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '安全登录',
+                        style: context.typography.cardTitle.copyWith(
+                          color: surge.textPrimary,
+                          fontSize: 14,
+                        ),
+                      ),
+                      Text(
+                        '登录信息仅用于绑定当前机场账户',
+                        style: context.typography.compactDescription.copyWith(
+                          color: surge.textSecondary,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (_pageLoading)
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _accentColor,
+                    ),
+                  )
+                else
+                  Icon(
+                    Icons.check_circle_rounded,
+                    color: _accentColor,
+                    size: 18,
+                  ),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: surge.separator),
+          Expanded(child: WebViewWidget(controller: _controller)),
+        ],
       ),
     );
   }
@@ -442,7 +595,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
         elevation: 0,
         titleSpacing: 0,
         title: Text(
-          '绑定${widget.site.title}账户',
+          '账户绑定',
           style: context.typography.sectionTitle.copyWith(
             color: surge.textPrimary,
           ),
@@ -458,16 +611,12 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
       body: Column(
         children: [
           if (_pageLoading) const LinearProgressIndicator(minHeight: 2),
-          _buildAirportHeader(context, surge),
+          _buildBrandHero(context),
           if (_webError != null) _buildError(context),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: SurgeCard(
-                padding: EdgeInsets.zero,
-                shadow: true,
-                child: WebViewWidget(controller: _controller),
-              ),
+              child: _buildWebViewSurface(context, surge),
             ),
           ),
           SafeArea(

@@ -12,6 +12,14 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.4',
+    date: '2026-09-20',
+    changes: [
+      '登录页统一为机场钥仓品牌化原生外壳，保留机场官方网页登录与验证码流程',
+      'iKun 同步读取订阅记录页，过滤 /user/subscribe_log 页面链接并提取真正订阅地址',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.3',
     date: '2026-09-20',
     changes: [

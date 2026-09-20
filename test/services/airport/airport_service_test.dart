@@ -20,8 +20,21 @@ void main() {
       final body = await utf8.decoder.bind(request).join();
       requests['${request.method} ${request.uri.path}'] = body;
 
-      if ((mode == 'ikun' || mode == 'ikun-current') &&
+      if ((mode == 'ikun' || mode == 'ikun-current' || mode == 'ikun-log') &&
           request.uri.path == '/user') {
+        if (mode == 'ikun-log') {
+          await _write(
+            request,
+            _wrappedHtml('''
+              <html><body>
+                email: log@example.com
+                <a href="/user/subscribe_log">订阅记录</a>
+              </body></html>
+            '''),
+            ContentType.html,
+          );
+          return;
+        }
         if (mode == 'ikun-current') {
           await _write(
             request,
@@ -47,6 +60,19 @@ void main() {
             <html><body>
               email: user@example.com
               <a href="/api/v1/client/subscribe?token=abc">订阅</a>
+            </body></html>
+          '''),
+          ContentType.html,
+        );
+        return;
+      }
+      if (mode == 'ikun-log' && request.uri.path == '/user/subscribe_log') {
+        await _write(
+          request,
+          _wrappedHtml('''
+            <html><body>
+              <a href="/user/subscribe_log">订阅记录</a>
+              <button data-clipboard-text="/link/log-token">复制订阅地址</button>
             </body></html>
           '''),
           ContentType.html,
@@ -141,6 +167,21 @@ void main() {
     expect(snapshot.download, 2 * 1024 * 1024);
     expect(snapshot.total, 3 * 1024 * 1024 * 1024 + 2 * 1024 * 1024);
     expect(snapshot.subscriptionUrl, 'https://sub.example/link/secret-token');
+  });
+
+  test('iKun reads a real link from subscription history, not its page URL',
+      () async {
+    mode = 'ikun-log';
+    final session = AirportSession(
+      kind: AirportKind.ikun,
+      baseUrl: baseUrl,
+      cookie: 'session=ok',
+    );
+
+    final snapshot = await AirportService().sync(session);
+
+    expect(snapshot.accountLabel, 'log@example.com');
+    expect(snapshot.subscriptionUrl, '$baseUrl/link/log-token');
   });
 
   test('Pokemon reads V2Board data, subscription and check-in result',
