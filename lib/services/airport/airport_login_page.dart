@@ -30,6 +30,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
   bool _detectingSession = false;
   bool _finishing = false;
   String? _lastUrl;
+  String? _webError;
   String _statusText = '登录成功后会自动返回账户中心';
   Timer? _sessionDetectionTimer;
 
@@ -46,6 +47,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
             setState(() {
               _pageLoading = true;
               _lastUrl = url;
+              _webError = null;
               if (!_finishing) _statusText = '登录成功后会自动返回账户中心';
             });
           },
@@ -59,8 +61,12 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
           },
           onWebResourceError: (error) {
             if (!mounted) return;
+            setState(() {
+              _pageLoading = false;
+              _webError = '网页加载失败：${error.description}';
+            });
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('网页加载失败：${error.description}')),
+              SnackBar(content: Text(_webError!)),
             );
           },
         ),
@@ -238,6 +244,28 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
       body: Column(
         children: [
           if (_pageLoading) const LinearProgressIndicator(minHeight: 2),
+          if (_webError != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '${_webError!}\n请返回选择其他入口，或使用自定义入口地址。',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => _controller.reload(),
+                    child: const Text('重试'),
+                  ),
+                ],
+              ),
+            ),
           Expanded(child: WebViewWidget(controller: _controller)),
           SafeArea(
             top: false,

@@ -12,6 +12,14 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.2.2',
+    date: '2026-09-20',
+    changes: [
+      '宝可梦绑定支持自定义 HTTPS 入口，机场更换域名后无需等待发版',
+      '网页入口加载失败时显示具体错误和重试提示',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.2.1',
     date: '2026-09-20',
     changes: [
