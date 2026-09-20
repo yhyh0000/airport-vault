@@ -345,13 +345,28 @@ class AirportService {
 
   bool _looksLikeUsableEntry(AirportKind kind, String body) {
     if (kind == AirportKind.ikun) {
-      return body.contains('password') ||
+      // A number of iKun domains are currently alive but only serve the
+      // public "latest domains" landing page.  Treating any HTML response
+      // as a valid entry makes the WebView open that page instead of the
+      // actual auth screen.  Require both credential-field and password
+      // markers so redirects/maintenance pages are rejected.
+      final hasCredentialField =
+          body.contains('name="email"') ||
+          body.contains("name='email'") ||
+          body.contains('type="email"') ||
+          body.contains("type='email'") ||
+          body.contains('邮箱') ||
+          body.contains('email');
+      final hasPasswordField =
+          body.contains('name="passwd"') ||
+          body.contains("name='passwd'") ||
+          body.contains('name="password"') ||
+          body.contains("name='password'") ||
+          body.contains('type="password"') ||
+          body.contains("type='password'") ||
           body.contains('密码') ||
-          body.contains('email') ||
-          body.contains('auth/login') ||
-          body.contains('登录') ||
-          body.contains('<html') ||
-          body.contains('<form');
+          body.contains('password');
+      return hasCredentialField && hasPasswordField;
     }
     // Pokemon is a hash-routed SPA, so the login route is not sent to the
     // server.  Accept the app shell, but reject plain navigation and guard

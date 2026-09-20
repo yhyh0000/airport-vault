@@ -46,11 +46,13 @@ const airportSiteDefinitions = <AirportSiteDefinition>[
     kind: AirportKind.ikun,
     title: 'iKun机场',
     description: '绑定账户后自动同步流量、到期时间与每日签到',
-    // ikuuu.top currently serves an expired TLS certificate. Keep the
-    // certificate-valid mirror as the first entry so WebView can load the
-    // login page without asking users to diagnose a browser error.
-    defaultBaseUrl: 'https://ikuuu.pw',
+    // The official status page currently lists ikuuu.top as the primary
+    // domain and ikuuu.pw as the backup.  Keep the list ordered by that
+    // published priority; findBestEntry still probes every candidate and
+    // selects the fastest one that actually serves a login form.
+    defaultBaseUrl: 'https://ikuuu.top',
     alternateBaseUrls: [
+      'https://ikuuu.pw',
       'https://ikuuu.co',
       'https://ikuuu.ltd',
       'https://ikuuu.fyi',

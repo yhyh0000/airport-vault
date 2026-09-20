@@ -12,6 +12,14 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.1',
+    date: '2026-09-20',
+    changes: [
+      '修复 iKun 自动测速误选域名说明页导致登录后无账户数据的问题',
+      '优先使用当前官方主要域名，并要求入口探测必须返回真实邮箱和密码登录表单',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.0',
     date: '2026-09-20',
     changes: [
