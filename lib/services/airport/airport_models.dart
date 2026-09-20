@@ -46,9 +46,11 @@ const airportSiteDefinitions = <AirportSiteDefinition>[
     kind: AirportKind.ikun,
     title: 'iKun机场',
     description: '绑定账户后自动同步流量、到期时间与每日签到',
-    defaultBaseUrl: 'https://ikuuu.top',
+    // ikuuu.top currently serves an expired TLS certificate. Keep the
+    // certificate-valid mirror as the first entry so WebView can load the
+    // login page without asking users to diagnose a browser error.
+    defaultBaseUrl: 'https://ikuuu.pw',
     alternateBaseUrls: [
-      'https://ikuuu.pw',
       'https://ikuuu.co',
       'https://ikuuu.ltd',
       'https://ikuuu.fyi',

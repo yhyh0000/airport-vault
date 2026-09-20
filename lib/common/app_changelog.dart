@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.2.1',
+    date: '2026-09-20',
+    changes: [
+      '修复 iKun 默认入口证书过期导致 WebView 无法加载的问题，切换到可用的 ikuuu.pw 域名',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.2.0',
     date: '2026-09-20',
     changes: [
