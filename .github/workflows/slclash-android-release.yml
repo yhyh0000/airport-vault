@@ -375,15 +375,20 @@ jobs:
 
           EXPECTED_PACKAGE="com.slclash.app"
           if [ "${{ steps.signing.outputs.mode }}" = "debug" ]; then
-            EXPECTED_PACKAGE="com.slclash.app.dev"
+            # .dev is the formal test-signed release package; .qa is an
+            # isolated emulator package that can coexist with an older .dev
+            # install without deleting its local sessions.
+            EXPECTED_PACKAGES=("com.slclash.app.dev" "com.slclash.app.qa")
+          else
+            EXPECTED_PACKAGES=("$EXPECTED_PACKAGE")
           fi
           PUBSPEC_BUILD="$(grep '^version: ' pubspec.yaml | sed 's/.*+//')"
           for APK in "${{ steps.vars.outputs.apk_name }}" "${{ steps.vars.outputs.apk_name_x64 }}"; do
             echo "--- $APK ---"
             PACKAGE="$($AAPT2 dump packagename "$APK")"
             echo "packageName: $PACKAGE"
-            if [ "$PACKAGE" != "$EXPECTED_PACKAGE" ]; then
-              echo "FAIL: packageName mismatch (expected $EXPECTED_PACKAGE)"
+            if [[ ! " ${EXPECTED_PACKAGES[*]} " =~ " $PACKAGE " ]]; then
+              echo "FAIL: packageName mismatch (expected one of ${EXPECTED_PACKAGES[*]})"
               exit 1
             fi
             VERSION_CODE="$($AAPT2 dump badging "$APK" 2>/dev/null | grep -o "versionCode='[0-9]*'" | cut -d"'" -f2)"
