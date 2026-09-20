@@ -413,7 +413,6 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
                               '登录到机场钥仓',
                               style: context.typography.cardTitle.copyWith(
                                 color: Colors.white,
-                                fontWeight: FontWeight.w800,
                               ),
                             ),
                             const SizedBox(height: 3),
@@ -571,7 +570,9 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
             Expanded(
               child: Text(
                 '${_webError!}\n请返回重试自动探测，或稍后再试。',
-                style: TextStyle(color: colorScheme.onErrorContainer),
+                style: context.typography.body.copyWith(
+                  color: colorScheme.onErrorContainer,
+                ),
               ),
             ),
             TextButton(
