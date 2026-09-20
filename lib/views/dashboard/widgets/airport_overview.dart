@@ -61,9 +61,9 @@ class AirportOverview extends ConsumerWidget {
               ),
             ),
             TextButton.icon(
-              onPressed: _toProfiles,
-              icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('导入订阅'),
+              onPressed: () => _showManualSubscriptionImport(context, ref),
+              icon: const Icon(Icons.link_rounded, size: 18),
+              label: const Text('粘贴订阅链接'),
             ),
           ],
         ),
@@ -497,12 +497,27 @@ class _AirportAccountPanel extends ConsumerWidget {
               const SizedBox(height: 8),
             ],
             if (!account.isConnected || account.requiresLogin)
-              FilledButton.icon(
-                onPressed: () => _login(context, ref),
-                icon: const Icon(Icons.person_add_alt_1_rounded),
-                label: Text(
-                  account.requiresLogin ? '重新绑定账户' : '绑定账户',
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  FilledButton.icon(
+                    onPressed: () => _login(context, ref),
+                    icon: const Icon(Icons.person_add_alt_1_rounded),
+                    label: Text(
+                      account.requiresLogin ? '重新绑定账户' : '绑定账户',
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextButton.icon(
+                    onPressed: () => _showManualSubscriptionImport(
+                      context,
+                      ref,
+                      defaultLabel: preset.name,
+                    ),
+                    icon: const Icon(Icons.link_rounded, size: 18),
+                    label: const Text('手动导入订阅链接'),
+                  ),
+                ],
               )
             else ...[
               Row(
@@ -557,6 +572,16 @@ class _AirportAccountPanel extends ConsumerWidget {
                   label: const Text('复制订阅地址'),
                 ),
               ],
+              OutlinedButton.icon(
+                onPressed: () => _showManualSubscriptionImport(
+                  context,
+                  ref,
+                  defaultLabel: preset.name,
+                  headers: _sessionHeaders(account.session!),
+                ),
+                icon: const Icon(Icons.link_rounded),
+                label: const Text('手动导入订阅链接'),
+              ),
               const SizedBox(height: 4),
               TextButton(
                 onPressed: () => _login(context, ref),
@@ -569,11 +594,150 @@ class _AirportAccountPanel extends ConsumerWidget {
     );
   }
 
+  Map<String, String> _sessionHeaders(AirportSession session) {
+    return {
+      if (session.cookie.trim().isNotEmpty) 'Cookie': session.cookie,
+      if (session.accessToken != null)
+        'Authorization': 'Bearer ${session.accessToken}',
+      'Referer': '${session.baseUrl.replaceFirst(RegExp(r'/+$'), '')}/',
+      'Origin': session.baseUrl.replaceFirst(RegExp(r'/+$'), ''),
+    };
+  }
+
   static String _formatBytes(int bytes) {
     if (bytes < 1024 * 1024 * 1024) {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+}
+
+class _ManualSubscriptionInput {
+  const _ManualSubscriptionInput({required this.url, this.label});
+
+  final String url;
+  final String? label;
+}
+
+Future<void> _showManualSubscriptionImport(
+  BuildContext context,
+  WidgetRef ref, {
+  String? defaultLabel,
+  Map<String, String> headers = const {},
+}) async {
+  final urlController = TextEditingController();
+  final labelController = TextEditingController(text: defaultLabel ?? '');
+  final result = await showDialog<_ManualSubscriptionInput>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('导入订阅链接'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextField(
+              controller: labelController,
+              decoration: const InputDecoration(
+                labelText: '订阅名称（可选）',
+                hintText: '例如：iKun 主订阅',
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: urlController,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              minLines: 2,
+              maxLines: 4,
+              decoration: InputDecoration(
+                labelText: '订阅链接',
+                hintText: '粘贴完整的 https:// 订阅地址',
+                suffixIcon: IconButton(
+                  tooltip: '从剪贴板粘贴',
+                  icon: const Icon(Icons.content_paste_rounded),
+                  onPressed: () async {
+                    final data = await Clipboard.getData('text/plain');
+                    final value = data?.text?.trim();
+                    if (value != null && value.isNotEmpty) {
+                      urlController.text = value;
+                      urlController.selection = TextSelection.collapsed(
+                        offset: value.length,
+                      );
+                    }
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '支持 Clash / Mihomo、V2Ray 等机场订阅格式。',
+              style: dialogContext.typography.compactDescription.copyWith(
+                color: SurgeTheme.of(dialogContext).textSecondary,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('取消'),
+        ),
+        FilledButton.icon(
+          onPressed: () {
+            final url = urlController.text.trim();
+            if (url.isEmpty) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(content: Text('请先粘贴订阅链接')),
+              );
+              return;
+            }
+            Navigator.of(dialogContext).pop(
+              _ManualSubscriptionInput(
+                url: url,
+                label: labelController.text.trim().isEmpty
+                    ? null
+                    : labelController.text.trim(),
+              ),
+            );
+          },
+          icon: const Icon(Icons.download_rounded),
+          label: const Text('导入'),
+        ),
+      ],
+    ),
+  );
+  urlController.dispose();
+  labelController.dispose();
+  if (result == null || !context.mounted) return;
+
+  final normalized = normalizeProfileSourceUrl(result.url);
+  if (normalized == null) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('订阅地址无效，请粘贴完整的 http(s) 链接')),
+    );
+    return;
+  }
+  try {
+    final profile = await ref
+        .read(profilesActionProvider.notifier)
+        .addProfileFormURL(
+          normalized,
+          label: result.label,
+          headers: headers,
+        );
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(profile == null ? '订阅导入失败，请检查链接' : '订阅已导入'),
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('订阅导入失败：$error')),
+    );
   }
 }
 

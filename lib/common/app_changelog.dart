@@ -12,6 +12,15 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.5',
+    date: '2026-09-20',
+    changes: [
+      '恢复并前置粘贴订阅链接入口，支持剪贴板直接导入',
+      '机场账户面板同时支持自动发现订阅和手动导入订阅',
+      '补充机场钥仓三项目融合后的产品设计与信息架构文档',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.4',
     date: '2026-09-20',
     changes: [
