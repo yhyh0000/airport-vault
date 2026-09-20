@@ -12,6 +12,14 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.7',
+    date: '2026-09-20',
+    changes: [
+      '移除仪表盘中的重复机场登录、绑定和订阅导入业务',
+      '仪表盘改为只读机场状态摘要，机场页面作为唯一账户管理入口',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.6',
     date: '2026-09-20',
     changes: [

@@ -5,7 +5,7 @@ import 'package:fl_clash/widgets/surge/surge.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/material.dart';
 
-import 'widgets/airport_overview.dart';
+import 'widgets/airport_status_summary.dart';
 import 'widgets/surge_dashboard_hero.dart';
 
 class DashboardView extends StatelessWidget {
@@ -68,7 +68,7 @@ class DashboardView extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const AirportOverview(),
+                        const AirportStatusSummary(),
                         SizedBox(height: layout.cardGap),
                         SurgeDashboardHero(
                           layout: layout,
