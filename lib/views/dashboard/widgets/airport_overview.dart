@@ -383,67 +383,23 @@ class _AirportAccountPanel extends ConsumerWidget {
     if (context.mounted && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
-    var resolvedBaseUrl = baseUrl;
-    if (resolvedBaseUrl == null && context.mounted) {
+    final resolvedBaseUrl = baseUrl ?? site.defaultBaseUrl;
+    if (baseUrl == null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('自动探测没有找到可用入口，可检查网络后重试')),
+        const SnackBar(content: Text('入口测速未完成，正在尝试默认入口')),
       );
-      resolvedBaseUrl = await _askCustomBaseUrl(context);
     }
-    if (resolvedBaseUrl == null || !context.mounted) return;
+    if (!context.mounted) return;
     final session = await Navigator.of(context).push<AirportSession>(
       MaterialPageRoute(
         builder: (_) => AirportLoginPage(
           site: site,
-          baseUrl: resolvedBaseUrl!,
+          baseUrl: resolvedBaseUrl,
         ),
       ),
     );
     if (session == null || !context.mounted) return;
     await ref.read(airportAccountsProvider.notifier).saveSession(session);
-  }
-
-  Future<String?> _askCustomBaseUrl(BuildContext context) async {
-    final controller = TextEditingController();
-    final value = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('输入机场入口'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.url,
-          decoration: const InputDecoration(
-            hintText: 'https://example.com',
-            labelText: 'HTTPS 地址',
-          ),
-          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(controller.text),
-            child: const Text('打开'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (value == null || !context.mounted) return null;
-    final uri = Uri.tryParse(value.trim());
-    if (uri == null || uri.scheme.toLowerCase() != 'https' || uri.host.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入有效的 HTTPS 机场入口地址')),
-      );
-      return null;
-    }
-    final port = uri.hasPort ? ':${uri.port}' : '';
-    final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
-    return 'https://${uri.host}$port$path';
   }
 
   Future<void> _importSubscription(

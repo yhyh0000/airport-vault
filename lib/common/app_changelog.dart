@@ -14,7 +14,10 @@ const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
     version: 'v0.3.1',
     date: '2026-09-20',
-    changes: ['修正机场入口单元测试仍断言已过期域名的问题，恢复 Android 发布流水线'],
+    changes: [
+      '修正机场入口单元测试仍断言已过期域名的问题，恢复 Android 发布流水线',
+      '入口测速全部失败时自动回退默认入口，不再要求用户手动选择地址',
+    ],
   ),
   AppChangelogEntry(
     version: 'v0.3.0',

@@ -293,6 +293,7 @@ class AirportService {
         '$baseUrl$path',
         options: Options(
           responseType: ResponseType.plain,
+          connectTimeout: const Duration(seconds: 5),
           sendTimeout: const Duration(seconds: 5),
           receiveTimeout: const Duration(seconds: 7),
           validateStatus: (status) => status != null && status < 500,
@@ -325,7 +326,9 @@ class AirportService {
           body.contains('密码') ||
           body.contains('email') ||
           body.contains('auth/login') ||
-          body.contains('登录');
+          body.contains('登录') ||
+          body.contains('<html') ||
+          body.contains('<form');
     }
     // Pokemon is a hash-routed SPA, so the login route is not sent to the
     // server.  Accept the app shell, but reject plain navigation and guard
