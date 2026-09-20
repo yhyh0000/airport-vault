@@ -249,8 +249,16 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
     try {
       final decoded = jsonDecode(storage);
       if (decoded is! Map) return false;
-      return const ['token', 'auth_token', 'access_token', 'accessToken']
-          .any((key) => decoded[key]?.toString().trim().isNotEmpty == true);
+      final hasDirectToken = const [
+        'token',
+        'auth_token',
+        'access_token',
+        'accessToken',
+        'auth_data',
+      ].any((key) => decoded[key]?.toString().trim().isNotEmpty == true);
+      if (hasDirectToken) return true;
+      final user = decoded['user'];
+      return user is Map && user['token']?.toString().trim().isNotEmpty == true;
     } catch (_) {
       return false;
     }

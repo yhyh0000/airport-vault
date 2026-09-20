@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.9',
+    date: '2026-09-20',
+    changes: [
+      '修复宝可梦登录后仅保存 auth_data 时无法绑定账户的问题',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.8',
     date: '2026-09-20',
     changes: [
