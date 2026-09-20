@@ -126,8 +126,52 @@ class AirportSession {
         final value = decoded[key]?.toString().trim();
         if (value != null && value.isNotEmpty) return value;
       }
+      final user = decoded['user'];
+      if (user is Map) {
+        final value = user['token']?.toString().trim();
+        if (value != null && value.isNotEmpty) return value;
+      }
     } catch (_) {}
     return null;
+  }
+
+  /// Pokemon's web client stores the API credential as `auth_data`, while
+  /// older airport pages store a bare token.  Keep the original value when it
+  /// already contains the Bearer scheme so callers can send the same header
+  /// as the official web client.
+  String? get authorizationHeader {
+    try {
+      final decoded = jsonDecode(localStorageJson);
+      if (decoded is Map) {
+        final raw = decoded['auth_data']?.toString().trim();
+        if (raw != null && raw.isNotEmpty) {
+          return raw.toLowerCase().startsWith('bearer ')
+              ? raw
+              : 'Bearer $raw';
+        }
+      }
+    } catch (_) {}
+    final token = accessToken;
+    return token == null ? null : 'Bearer $token';
+  }
+
+  /// The Pokemon web app allows an API host override in localStorage.  It is
+  /// optional; the public production configuration is the fallback.
+  String? get apiBaseUrl {
+    try {
+      final decoded = jsonDecode(localStorageJson);
+      if (decoded is! Map) return null;
+      final value = decoded['api_base_url']?.toString().trim();
+      if (value == null || value.isEmpty) return null;
+      final uri = Uri.tryParse(value);
+      if (uri == null || !uri.hasScheme || uri.host.isEmpty) return null;
+      if (uri.scheme != 'https') return null;
+      final port = uri.hasPort ? ':${uri.port}' : '';
+      final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
+      return '${uri.scheme}://${uri.host}$port$path';
+    } catch (_) {
+      return null;
+    }
   }
 
   Map<String, Object?> toJson() => {

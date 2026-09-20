@@ -167,6 +167,41 @@ class AirportAccountsNotifier extends Notifier<AirportAccountsState> {
       );
     }
   }
+
+  Future<AirportGiftCardResult?> redeemGiftCard(
+    AirportKind kind,
+    String code,
+  ) async {
+    final current = state.forKind(kind);
+    final session = current.session;
+    if (session == null || current.loading) return null;
+    state = state.copyWith(
+      kind,
+      current.copyWith(loading: true, clearError: true),
+    );
+    try {
+      final result = await _service.redeemGiftCard(session, code);
+      state = state.copyWith(
+        kind,
+        state.forKind(kind).copyWith(loading: false, requiresLogin: false),
+      );
+      // A successful gift card changes both the package and the subscription
+      // URL.  Always refresh so the user does not have to leave the account
+      // page or log in again before importing the new subscription.
+      await sync(kind);
+      return result;
+    } catch (error) {
+      state = state.copyWith(
+        kind,
+        state.forKind(kind).copyWith(
+          loading: false,
+          error: error.toString(),
+          requiresLogin: error is AirportAuthRequired,
+        ),
+      );
+      return null;
+    }
+  }
 }
 
 final airportAccountsProvider = NotifierProvider<AirportAccountsNotifier,

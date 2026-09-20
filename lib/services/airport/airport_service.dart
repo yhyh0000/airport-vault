@@ -36,6 +36,18 @@ class AirportEntryProbe {
   final Duration elapsed;
 }
 
+class AirportGiftCardResult {
+  const AirportGiftCardResult({
+    required this.type,
+    required this.value,
+    required this.message,
+  });
+
+  final int? type;
+  final num? value;
+  final String message;
+}
+
 /// Web-compatible adapters for the two initial airports.
 ///
 /// iKun currently exposes an SSPanel-style server-rendered page and
@@ -112,7 +124,9 @@ class AirportService {
         : await _pokemonCheckin(session);
 
     _throwIfAuth(response);
-    final body = _jsonMap(response.data);
+    final body = session.kind == AirportKind.pokemon
+        ? _pokemonJsonMap(response.data)
+        : _jsonMap(response.data);
     final message = _message(body) ?? _plainMessage(response.data);
     final already = _containsCheckinMessage(message);
     final success = already ||
@@ -127,6 +141,46 @@ class AirportService {
       checkinDone: true,
       message: message ?? (already ? '今天已经签到' : '签到成功'),
       fetchedAt: DateTime.now(),
+    );
+  }
+
+  /// Redeems the monthly Pokemon gift card.  The web client calls this a
+  /// gift card even though the code is used to grant the free 8.8 package.
+  /// This method never guesses a fallback endpoint: it follows the public
+  /// frontend contract and refreshes the account separately in the notifier.
+  Future<AirportGiftCardResult> redeemGiftCard(
+    AirportSession session,
+    String code,
+  ) async {
+    if (session.kind != AirportKind.pokemon) {
+      throw const AirportRequestFailed('只有宝可梦机场支持礼品卡兑换');
+    }
+    final normalizedCode = code.trim();
+    if (normalizedCode.isEmpty) {
+      throw const AirportRequestFailed('请输入兑换码');
+    }
+    final response = await _request(
+      session,
+      '/user/redeemgiftcard',
+      baseUrl: _pokemonApiBaseUrl(session),
+      method: 'POST',
+      data: FormData.fromMap({'giftcard': normalizedCode}),
+    );
+    _throwIfAuth(response);
+    final json = _pokemonJsonMap(response.data);
+    if (json == null) {
+      throw const AirportRequestFailed('兑换接口返回了无法识别的结果');
+    }
+    final type = _numberOrNull(json['type']);
+    final value = _numOrNull(json['value']);
+    final success = json['data'] == true && type != null && type >= 1 && type <= 5;
+    if (!success) {
+      throw AirportRequestFailed(_message(json) ?? '兑换码无效或本月已领取');
+    }
+    return AirportGiftCardResult(
+      type: type,
+      value: value,
+      message: _giftCardSuccessMessage(type, value),
     );
   }
 
@@ -195,14 +249,18 @@ class AirportService {
   }
 
   Future<AirportSnapshot> _syncPokemon(AirportSession session) async {
-    final infoResponse = await _request(session, '/api/v1/user/info');
+    final infoResponse = await _request(
+      session,
+      '/user/info',
+      baseUrl: _pokemonApiBaseUrl(session),
+    );
     if (infoResponse.statusCode == 404 || infoResponse.statusCode == 405) {
       final htmlResponse = await _request(session, '/');
       _throwIfAuth(htmlResponse);
       return _syncHtmlFallback(session, htmlResponse.data?.toString() ?? '');
     }
     _throwIfAuth(infoResponse);
-    final info = _jsonMap(infoResponse.data);
+    final info = _pokemonJsonMap(infoResponse.data);
     if (info == null) {
       final htmlResponse = await _request(session, '/');
       _throwIfAuth(htmlResponse);
@@ -248,7 +306,8 @@ class AirportService {
   Future<Response<dynamic>> _pokemonCheckin(AirportSession session) async {
     final api = await _request(
       session,
-      '/api/v1/user/checkin',
+      '/user/checkin',
+      baseUrl: _pokemonApiBaseUrl(session),
       method: 'POST',
       headers: const {'X-Requested-With': 'XMLHttpRequest'},
     );
@@ -264,7 +323,11 @@ class AirportService {
   Future<String?> _getPokemonSubscribeUrl(AirportSession session) async {
     late final Response<dynamic> response;
     try {
-      response = await _request(session, '/api/v1/user/getSubscribe');
+      response = await _request(
+        session,
+        '/user/getSubscribe',
+        baseUrl: _pokemonApiBaseUrl(session),
+      );
     } on AirportRequestFailed {
       // Some older V2Board deployments expose user info but not the optional
       // subscription endpoint.  Account management should still work there.
@@ -272,7 +335,7 @@ class AirportService {
     }
     if (response.statusCode == 404 || response.statusCode == 405) return null;
     _throwIfAuth(response);
-    final json = _jsonMap(response.data);
+    final json = _pokemonJsonMap(response.data);
     if (json == null) return null;
     final direct = json['data']?.toString().trim();
     if (direct != null &&
@@ -291,16 +354,21 @@ class AirportService {
   Future<Response<dynamic>> _request(
     AirportSession session,
     String path, {
+    String? baseUrl,
     String method = 'GET',
     Map<String, String>? headers,
+    Object? data,
   }) async {
-    final base = session.baseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final base = (baseUrl ?? session.baseUrl).replaceFirst(RegExp(r'/+$'), '');
+    final sessionBase = session.baseUrl.replaceFirst(RegExp(r'/+$'), '');
     final url = path.startsWith('http') ? path : '$base$path';
     final requestHeaders = <String, String>{
-      'Referer': '$base/',
-      'Origin': base,
-      if (session.cookie.trim().isNotEmpty) 'Cookie': session.cookie,
-      if (session.accessToken != null) 'Authorization': 'Bearer ${session.accessToken}',
+      'Referer': '$sessionBase/',
+      'Origin': sessionBase,
+      if (base == sessionBase && session.cookie.trim().isNotEmpty)
+        'Cookie': session.cookie,
+      if (session.authorizationHeader != null)
+        'Authorization': session.authorizationHeader!,
       ...?headers,
     };
     try {
@@ -308,7 +376,7 @@ class AirportService {
         url,
         // iKun's legacy check-in endpoint rejects an empty JSON body with 405.
         // Sending no body also keeps Dio from adding Content-Type.
-        data: null,
+        data: data,
         options: Options(method: method, headers: requestHeaders),
       );
     } on DioException catch (error) {
@@ -449,6 +517,74 @@ class AirportService {
     } catch (_) {
       return null;
     }
+  }
+
+  Map<String, dynamic>? _pokemonJsonMap(Object? value) {
+    final direct = _jsonMap(value);
+    if (direct != null) return direct;
+    if (value is! String || value.trim().isEmpty) return null;
+    try {
+      var decoded = utf8.decode(base64Decode(_padBase64(value.trim())));
+      for (var i = 0; i < 10; i++) {
+        decoded = _decodePokemonLayer(decoded);
+      }
+      final parsed = jsonDecode(decoded);
+      return parsed is Map ? Map<String, dynamic>.from(parsed) : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _decodePokemonLayer(String input) {
+    const encrypted =
+        'nsz{gAWrkXlx08J6Eq:V4[deO1DQTCwm2oB3ty9jSYI]7RM5bHiUam,c}KuPGpNhZLvF';
+    const plain =
+        'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,[]{}:';
+    final buffer = StringBuffer();
+    for (final character in input.split('')) {
+      final index = encrypted.indexOf(character);
+      buffer.write(index < 0 ? character : plain[index]);
+    }
+    return buffer.toString();
+  }
+
+  String _padBase64(String input) {
+    final remainder = input.length % 4;
+    return remainder == 0 ? input : '$input${'=' * (4 - remainder)}';
+  }
+
+  String _pokemonApiBaseUrl(AirportSession session) {
+    final configured = session.apiBaseUrl;
+    // Keep local loopback sessions usable in the service tests and local
+    // development without allowing arbitrary insecure remote API hosts.
+    final baseValue = configured ??
+        (session.baseUrl.startsWith('http://127.0.0.1:')
+            ? session.baseUrl
+            : 'https://api123.136470.xyz');
+    final base = baseValue
+        .replaceFirst(RegExp(r'/+$'), '');
+    return base.endsWith('/api/v1') ? base : '$base/api/v1';
+  }
+
+  int? _numberOrNull(Object? value) {
+    if (value is num) return value.round();
+    return int.tryParse(value?.toString() ?? '');
+  }
+
+  num? _numOrNull(Object? value) {
+    if (value is num) return value;
+    return num.tryParse(value?.toString() ?? '');
+  }
+
+  String _giftCardSuccessMessage(int type, num? value) {
+    return switch (type) {
+      1 => '兑换成功，账户余额已增加 ${((value ?? 0) / 100).toStringAsFixed(2)}',
+      2 => '兑换成功，订阅时长增加 ${value ?? 0} 天',
+      3 => '兑换成功，套餐流量增加 ${value ?? 0} GB',
+      4 => '兑换成功，流量已重置',
+      5 => '兑换成功，订阅套餐增加 ${value ?? 0} 天',
+      _ => '兑换成功',
+    };
   }
 
   Map<String, dynamic>? _asMap(Object? value) {

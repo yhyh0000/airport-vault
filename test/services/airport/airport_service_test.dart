@@ -87,7 +87,8 @@ void main() {
         );
         return;
       }
-      if (mode == 'pokemon' && request.uri.path == '/api/v1/user/info') {
+      if ((mode == 'pokemon' || mode == 'pokemon-gift') &&
+          request.uri.path == '/api/v1/user/info') {
         await _write(
           request,
           jsonEncode({
@@ -103,7 +104,7 @@ void main() {
         );
         return;
       }
-      if (mode == 'pokemon' &&
+      if ((mode == 'pokemon' || mode == 'pokemon-gift') &&
           request.uri.path == '/api/v1/user/getSubscribe') {
         await _write(
           request,
@@ -112,7 +113,16 @@ void main() {
         );
         return;
       }
-      if (mode == 'pokemon' &&
+      if (mode == 'pokemon-gift' &&
+          request.uri.path == '/api/v1/user/redeemgiftcard') {
+        await _write(
+          request,
+          jsonEncode({'data': true, 'type': 5, 'value': 30}),
+          ContentType.json,
+        );
+        return;
+      }
+      if ((mode == 'pokemon' || mode == 'pokemon-gift') &&
           request.uri.path == '/api/v1/user/checkin') {
         await _write(
           request,
@@ -208,6 +218,24 @@ void main() {
     expect(checkedIn.checkinDone, isTrue);
     expect(checkedIn.message, '签到成功');
     expect(requests['POST /api/v1/user/checkin'], isEmpty);
+  });
+
+  test('Pokemon redeems the monthly gift card and sends the official field',
+      () async {
+    mode = 'pokemon-gift';
+    final session = AirportSession(
+      kind: AirportKind.pokemon,
+      baseUrl: baseUrl,
+      cookie: 'session=ok',
+      localStorageJson: '{"auth_data":"Bearer token-123"}',
+    );
+
+    final result = await AirportService().redeemGiftCard(session, 'APRIL-88');
+
+    expect(result.type, 5);
+    expect(result.value, 30);
+    expect(result.message, '兑换成功，订阅套餐增加 30 天');
+    expect(requests['POST /api/v1/user/redeemgiftcard'], contains('APRIL-88'));
   });
 }
 

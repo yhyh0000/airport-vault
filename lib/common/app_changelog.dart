@@ -12,6 +12,15 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.5.8',
+    date: '2026-09-20',
+    changes: [
+      '宝可梦机场详情页新增 8.8 免费套餐兑换码入口',
+      '接入宝可梦礼品卡真实 API，兑换成功后自动刷新套餐和订阅地址',
+      '修复宝可梦 API 主机、授权头和加密响应解析，避免登录后数据为空',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.5.7',
     date: '2026-09-20',
     changes: [

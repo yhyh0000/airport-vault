@@ -25,7 +25,7 @@ class AirportOverview extends ConsumerWidget {
     _AirportPreset(
       kind: AirportKind.pokemon,
       name: 'Pokemon',
-      caption: '账户、订阅与每日签到同步',
+      caption: '账户、订阅、8.8兑换与每日签到同步',
       icon: Icons.catching_pokemon_rounded,
       color: Color(0xFF2CC7C9),
     ),
@@ -445,6 +445,64 @@ class _AirportAccountPanel extends ConsumerWidget {
     );
   }
 
+  Future<void> _redeemPokemonGiftCard(
+    BuildContext context,
+    WidgetRef ref,
+    AirportSession session,
+  ) async {
+    final codeController = TextEditingController();
+    final code = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('领取 8.8 免费套餐'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('宝可梦机场每月免费 8.8 套餐需要输入当月兑换码。兑换成功后会自动刷新套餐和订阅地址。'),
+            const SizedBox(height: 14),
+            TextField(
+              controller: codeController,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: '兑换码',
+                hintText: '请输入礼品卡兑换码',
+                prefixIcon: Icon(Icons.confirmation_number_outlined),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              final value = codeController.text.trim();
+              if (value.isEmpty) return;
+              Navigator.of(dialogContext).pop(value);
+            },
+            icon: const Icon(Icons.redeem_rounded),
+            label: const Text('兑换'),
+          ),
+        ],
+      ),
+    );
+    codeController.dispose();
+    if (code == null || !context.mounted) return;
+
+    final result = await ref
+        .read(airportAccountsProvider.notifier)
+        .redeemGiftCard(AirportKind.pokemon, code);
+    if (!context.mounted) return;
+    final error = ref.read(airportAccountsProvider).forKind(AirportKind.pokemon).error;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result?.message ?? error ?? '兑换失败，请检查兑换码')),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final site = airportSite(preset.kind);
@@ -520,6 +578,20 @@ class _AirportAccountPanel extends ConsumerWidget {
                 ],
               )
             else ...[
+              if (preset.kind == AirportKind.pokemon) ...[
+                OutlinedButton.icon(
+                  onPressed: account.loading
+                      ? null
+                      : () => _redeemPokemonGiftCard(
+                            context,
+                            ref,
+                            account.session!,
+                          ),
+                  icon: const Icon(Icons.redeem_rounded),
+                  label: const Text('领取 8.8 免费套餐'),
+                ),
+                const SizedBox(height: 8),
+              ],
               Row(
                 children: [
                   Expanded(

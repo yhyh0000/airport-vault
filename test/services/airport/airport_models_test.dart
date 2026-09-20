@@ -27,4 +27,17 @@ void main() {
     expect(restored.cookie, 'session=abc');
     expect(restored.accessToken, 'token-123');
   });
+
+  test('Pokemon session reads auth_data and API host override', () {
+    const session = AirportSession(
+      kind: AirportKind.pokemon,
+      baseUrl: 'https://web2.52pokemon.cc',
+      cookie: '',
+      localStorageJson:
+          '{"auth_data":"Bearer token-456","api_base_url":"https://api.example.test"}',
+    );
+
+    expect(session.authorizationHeader, 'Bearer token-456');
+    expect(session.apiBaseUrl, 'https://api.example.test');
+  });
 }

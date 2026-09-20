@@ -146,33 +146,35 @@ importSublink('shadowrocket') -> oneclickImport('shadowrocket', decodedSubInfo.s
 /dashboard
 ```
 
-前端公开脚本中可确认的登录调用契约：
+当前页面实际加载的 API 模块中可确认的登录调用契约（API 主机与门户页面分离）：
 
 ```http
-POST users/authenticate
-Content-Type: application/json
+POST https://api123.136470.xyz/api/v1/passport/auth/login
+Content-Type: multipart/form-data
 
 {
-  "username": "邮箱",
+  "email": "邮箱",
   "password": "密码"
 }
 ```
 
-接口返回的用户对象带有 Token。前端后续请求使用：
+前端请求层从 `localStorage.auth_data` 读取认证值，并在后续请求发送：
 
 ```http
-Authorization: Bearer <token>
+Authorization: <auth_data>
+theme-ua: mala-pro
 ```
 
-前端状态还保存 `auth_data`。当后续请求返回 401/403 时，网站会清理登录态并回到 `/login`。
+接口响应经过前端公开的 10 层替换解码后再解析 JSON。当后续请求返回 403 时，网站会清理登录态并回到 `/login`。
 
 移动端实现要求：
 
-- 直接实现 JSON 登录，不使用 WebView 抓 Cookie 作为主流程；
-- Token 和账户信息放入 Android Keystore/安全存储；
-- 401/403 统一转换为“登录已过期，请重新登录”；
+- 宝可梦当前登录页可以继续使用官方 WebView 完成登录；保存 `auth_data` 或用户 Token 后，再由 API Adapter 请求数据；
+- API base 默认是 `https://api123.136470.xyz/api/v1`，同时读取网页配置中的 `api_base_url` 覆盖值；
+- `auth_data` 已带 `Bearer ` 时原样发送，否则补上 `Bearer `；
+- 403 统一转换为“登录已过期，请重新绑定账户”；
 - 不把 Token 写入日志或异常上报；
-- API base URL 必须配置化，不能把公开脚本压缩后出现的占位文本当真实地址。
+- API 返回的加密字符串必须先按网页同样的替换表解码 10 次，再解析 JSON，不能把编码响应当普通 JSON。
 
 ### 2. `/dashboard` 页面职责
 
@@ -232,6 +234,15 @@ V2rayN/V2rayNG 被标记为 `copyOnly`，页面提示用户复制通用订阅链
 
 网页前端每 5 秒和窗口获得焦点时读取 `subscribe_url`，说明订阅地址可能由登录响应或“重置密钥”动作写入前端状态，而不是固定渲染在普通 DOM 属性上。
 
+当前 API 模块还确认了订阅地址接口：
+
+```http
+GET https://api123.136470.xyz/api/v1/user/getSubscribe
+Authorization: <auth_data>
+```
+
+返回对象的 `data` 中包含 `subscribe_url`；响应同样需要按网页的替换表解码后读取。移动端不应读取或记录完整订阅 Token，只在内存中交给导入器。
+
 移动端实现要求：
 
 1. 登录成功后主动获取/解析通用订阅地址；
@@ -240,9 +251,25 @@ V2rayN/V2rayNG 被标记为 `copyOnly`，页面提示用户复制通用订阅链
 4. “一键导入”只作为辅助深链，核心流程必须有复制链接和 App 内直接导入两个 fallback；
 5. “重置密钥”是破坏性操作，会让已有客户端需要重新配置，必须单独二次确认，不能放在普通同步按钮旁边。
 
-当前调研中，宝可梦页面的“复制通用订阅链接”是 Vue 按钮而非 href，浏览器自动化无法从系统剪贴板读到值。因此具体的订阅 URL API 还需要在移动端请求层或浏览器 Network 级别再确认，不能用猜测路径代替。
+当前调研中，宝可梦页面的“复制通用订阅链接”是 Vue 按钮而非 href；它背后的订阅 URL 已通过公开 API 模块确认来自 `/user/getSubscribe`，移动端无需依赖系统剪贴板读取。浏览器页面仍只用于展示和人工兜底，不能把完整订阅 Token 写入日志。
 
-### 4. 宝可梦签到判断
+### 4. 8.8 免费套餐兑换
+
+仪表盘套餐卡的真实入口是“兑换礼品卡”，不是套餐购买页中的付费下单。弹窗字段标签为“兑换码”，提交按钮为“兑换”。公开前端组件确认请求契约：
+
+```http
+POST https://api123.136470.xyz/api/v1/user/redeemgiftcard
+Authorization: <auth_data>
+Content-Type: multipart/form-data
+
+giftcard=<兑换码>
+```
+
+成功响应包含 `data=true`、`type` 和 `value`。网页按 `type` 展示结果：余额增加、订阅时长增加、套餐流量增加、流量重置或订阅套餐增加时长。移动端应只在宝可梦账户已绑定时显示“领取 8.8 免费套餐”，兑换成功后重新请求 `/user/info` 与 `/user/getSubscribe`，刷新套餐、流量、到期时间和订阅地址；兑换失败应展示服务端消息，不自动重试。
+
+这是会改变账户状态的操作，移动端必须让用户明确点击“兑换”，不能在登录、同步或打开页面时自动提交。
+
+### 5. 宝可梦签到判断
 
 当前宝可梦登录后的真实首页没有看到独立的“每日签到”菜单或签到按钮，核心业务是套餐、流量、订阅和工单。移动端不应照搬 iKun 的签到按钮；如果后续发现 API 返回签到字段，再以账户状态字段驱动 UI。
 
@@ -266,13 +293,15 @@ V2rayN/V2rayNG 被标记为 `copyOnly`，页面提示用户复制通用订阅链
 
 ```text
 测速选入口
-  -> POST users/authenticate(JSON)
-  -> 保存 Bearer Token/auth_data 到安全存储
-  -> GET /dashboard 或对应用户 API
+  -> 官方登录页完成登录
+  -> 保存 auth_data/Token 到安全存储
+  -> API GET /user/info + GET /user/getSubscribe
   -> 读取通用 subscribe_url
   -> 追加 flag/name
   -> 直接导入 ClashMeta 或复制 URL
-  -> 401/403 清理 Token 并要求重新登录
+  -> 兑换入口：POST /user/redeemgiftcard(multipart giftcard)
+  -> 兑换成功后重新拉取账户和订阅
+  -> 403 清理 Token 并要求重新登录
 ```
 
 ## 四、当前代码需要遵守的边界
@@ -289,6 +318,6 @@ V2rayN/V2rayNG 被标记为 `copyOnly`，页面提示用户复制通用订阅链
 ## 五、待继续确认的接口
 
 - iKun 当前账号已显示“明日再来”，因此尚未在可签到状态下确认真正签到请求；后续需要使用一个当天未签到的测试状态或读取前端请求记录。
-- 宝可梦 `subscribe_url` 的产生接口在懒加载业务模块之外，页面按钮是 Vue 事件而非 href；需要进一步捕获登录后 API 请求或从运行时状态安全提取订阅地址。
-- 宝可梦 Android/ClashMeta 的一键导入深链可以确定，但最终订阅 URL 的服务端响应格式还需用真实 URL 请求验证。
-
+- 宝可梦 `subscribe_url` 已从公开 API 模块确认来自 `/user/getSubscribe`；真实订阅 Token 仍不写入本文。
+- 宝可梦礼品卡兑换已从公开 API 模块确认来自 `/user/redeemgiftcard`，移动端实现需要用真实已登录账号验证成功和失败消息，但不能用调研账号提交兑换码。
+- 宝可梦 Android/ClashMeta 的一键导入深链可以确定；最终订阅 URL 是否可直接拉取仍需在移动端使用已保存认证态验证。
