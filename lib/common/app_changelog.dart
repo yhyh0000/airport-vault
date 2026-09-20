@@ -12,6 +12,15 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.4.0',
+    date: '2026-09-20',
+    changes: [
+      '机场登录页改为与 App 统一的原生卡片、配色和状态栏布局',
+      '保留机场官方网页登录与验证码流程，并在页面内注入轻量统一样式',
+      '登录状态和完成绑定操作集中到原生底部操作栏，减少网页页面与 App 的割裂感',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.3.1',
     date: '2026-09-20',
     changes: [

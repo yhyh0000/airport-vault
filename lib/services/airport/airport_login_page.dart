@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:fl_clash/services/airport/airport_models.dart';
+import 'package:fl_clash/widgets/surge/surge.dart';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
-
-import 'airport_models.dart';
 
 /// Logs in through the airport's own web page so Geetest/Turnstile and other
 /// site-specific challenges stay in the official flow. The app only reads the
@@ -57,6 +57,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
               _pageLoading = false;
               _lastUrl = url;
             });
+            unawaited(_applyWebTheme());
             _scheduleSessionDetection();
           },
           onWebResourceError: (error) {
@@ -228,11 +229,175 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
     Navigator.of(context).pop(session);
   }
 
+  Future<void> _applyWebTheme() async {
+    try {
+      final css = _webThemeCss(_accentColor);
+      await _controller.runJavaScript('''
+        (() => {
+          const styleId = 'airport-vault-native-theme';
+          let style = document.getElementById(styleId);
+          if (!style) {
+            style = document.createElement('style');
+            style.id = styleId;
+            document.head.appendChild(style);
+          }
+          style.textContent = ${jsonEncode(css)};
+        })();
+      ''');
+    } catch (_) {
+      // The native shell remains usable when a site blocks injected CSS.
+    }
+  }
+
+  Color get _accentColor => widget.site.kind == AirportKind.pokemon
+      ? const Color(0xFF2CC7C9)
+      : const Color(0xFF5B61FF);
+
+  String _webThemeCss(Color accent) {
+    final accentHex = accent.value.toRadixString(16).substring(2);
+    return '''
+      :root { color-scheme: light; }
+      html, body {
+        background: #F2F3F7 !important;
+        color: #202124 !important;
+      }
+      body {
+        margin: 0 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+      }
+      a { color: #$accentHex !important; }
+      input, textarea, select {
+        min-height: 44px !important;
+        border-radius: 12px !important;
+        border: 1px solid #D9DCE5 !important;
+        background: #FFFFFF !important;
+        box-sizing: border-box !important;
+      }
+      button, [role="button"], input[type="submit"] {
+        min-height: 44px !important;
+        border-radius: 12px !important;
+        border: 0 !important;
+        background: #$accentHex !important;
+        color: #FFFFFF !important;
+        box-shadow: none !important;
+      }
+      img { max-width: 100% !important; border-radius: 16px !important; }
+      .card, .panel, .box, .login, .login-card, .form-container,
+      [class*="card"], [class*="panel"] {
+        border-radius: 18px !important;
+        box-shadow: 0 6px 20px rgba(32, 33, 36, 0.08) !important;
+      }
+    ''';
+  }
+
+  Widget _buildAirportHeader(BuildContext context, SurgeTheme surge) {
+    final icon = widget.site.kind == AirportKind.pokemon
+        ? Icons.catching_pokemon_rounded
+        : Icons.bolt_rounded;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      child: SurgeCard(
+        padding: const EdgeInsets.all(14),
+        shadow: false,
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: _accentColor.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(icon, color: _accentColor, size: 23),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.site.title,
+                    style: context.typography.cardTitle.copyWith(
+                      color: surge.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '官方网页登录 · 登录后自动同步账户信息',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: context.typography.compactDescription.copyWith(
+                      color: surge.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              decoration: BoxDecoration(
+                color: _accentColor.withValues(alpha: 0.11),
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: Text(
+                '安全绑定',
+                style: context.typography.badgeLabel.copyWith(
+                  color: _accentColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+        decoration: BoxDecoration(
+          color: colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.cloud_off_rounded, color: colorScheme.onErrorContainer),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '${_webError!}\n请返回重试自动探测，或稍后再试。',
+                style: TextStyle(color: colorScheme.onErrorContainer),
+              ),
+            ),
+            TextButton(
+              onPressed: () => _controller.reload(),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final surge = SurgeTheme.of(context);
     return Scaffold(
+      backgroundColor: surge.background,
       appBar: AppBar(
-        title: Text('绑定${widget.site.title}账户'),
+        backgroundColor: surge.background,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        titleSpacing: 0,
+        title: Text(
+          '绑定${widget.site.title}账户',
+          style: context.typography.sectionTitle.copyWith(
+            color: surge.textPrimary,
+          ),
+        ),
         actions: [
           IconButton(
             tooltip: '刷新',
@@ -244,50 +409,66 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
       body: Column(
         children: [
           if (_pageLoading) const LinearProgressIndicator(minHeight: 2),
-          if (_webError != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${_webError!}\n请返回重试自动探测，或稍后再试。',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => _controller.reload(),
-                    child: const Text('重试'),
-                  ),
-                ],
+          _buildAirportHeader(context, surge),
+          if (_webError != null) _buildError(context),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: SurgeCard(
+                padding: EdgeInsets.zero,
+                shadow: true,
+                child: WebViewWidget(controller: _controller),
               ),
             ),
-          Expanded(child: WebViewWidget(controller: _controller)),
+          ),
           SafeArea(
             top: false,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      _statusText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: SurgeCard(
+                padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+                shadow: false,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          Icon(
+                            _finishing
+                                ? Icons.sync_rounded
+                                : Icons.verified_user_outlined,
+                            size: 18,
+                            color: _accentColor,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _statusText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: context.typography.compactDescription
+                                  .copyWith(color: surge.textSecondary),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  FilledButton.icon(
-                    onPressed: _finishing ? null : _finish,
-                    icon: const Icon(Icons.lock_open_rounded, size: 18),
-                    label: Text(_finishing ? '正在绑定…' : '手动绑定账户'),
-                  ),
-                ],
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _accentColor,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 11,
+                        ),
+                      ),
+                      onPressed: _finishing ? null : _finish,
+                      icon: const Icon(Icons.lock_open_rounded, size: 18),
+                      label: Text(_finishing ? '绑定中…' : '完成绑定'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
