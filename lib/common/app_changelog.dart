@@ -12,6 +12,15 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.2.0',
+    date: '2026-09-20',
+    changes: [
+      '机场账户改为原生绑定流程，登录成功后自动返回账户中心',
+      '新增账户状态、流量、到期时间、签到和订阅导入入口',
+      '完善 iKun 与 Pokemon 的登录失效提示和重新绑定流程',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v2.2.3',
     date: '2026-09-12',
     changes: ['优化界面长按反馈显示'],

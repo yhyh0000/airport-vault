@@ -45,7 +45,7 @@ const airportSiteDefinitions = <AirportSiteDefinition>[
   AirportSiteDefinition(
     kind: AirportKind.ikun,
     title: 'iKun机场',
-    description: '网页登录后读取面板流量并执行每日签到',
+    description: '绑定账户后自动同步流量、到期时间与每日签到',
     defaultBaseUrl: 'https://ikuuu.top',
     alternateBaseUrls: [
       'https://ikuuu.pw',
@@ -61,7 +61,7 @@ const airportSiteDefinitions = <AirportSiteDefinition>[
   AirportSiteDefinition(
     kind: AirportKind.pokemon,
     title: '宝可梦机场',
-    description: '兼容 V2Board / XBoard 面板的登录、签到与订阅同步',
+    description: '绑定账户后同步 V2Board / XBoard 的账户、签到与订阅',
     defaultBaseUrl: 'https://web2.52pokemon.cc',
     alternateBaseUrls: [
       'https://love.52pokemon.cc',

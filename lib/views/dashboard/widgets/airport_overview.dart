@@ -16,14 +16,14 @@ class AirportOverview extends ConsumerWidget {
     _AirportPreset(
       kind: AirportKind.ikun,
       name: 'iKun',
-      caption: '网页登录后读取面板流量与每日签到',
+      caption: '流量、到期时间与每日签到同步',
       icon: Icons.bolt_rounded,
       color: Color(0xFF5B61FF),
     ),
     _AirportPreset(
       kind: AirportKind.pokemon,
       name: 'Pokemon',
-      caption: '兼容 V2Board / XBoard 的机场账户',
+      caption: '账户、订阅与每日签到同步',
       icon: Icons.catching_pokemon_rounded,
       color: Color(0xFF2CC7C9),
     ),
@@ -61,7 +61,7 @@ class AirportOverview extends ConsumerWidget {
             TextButton.icon(
               onPressed: _toProfiles,
               icon: const Icon(Icons.add_rounded, size: 18),
-              label: const Text('添加订阅'),
+              label: const Text('导入订阅'),
             ),
           ],
         ),
@@ -183,11 +183,13 @@ class _AirportCard extends StatelessWidget {
     final surge = SurgeTheme.of(context);
     final connected = account.isConnected;
     final status = account.error != null
-        ? '同步失败'
+        ? account.requiresLogin
+            ? '需要重新绑定'
+            : '同步失败'
         : account.snapshot?.checkinDone == true
             ? '今日已签到'
             : connected
-                ? '已登录${account.snapshot == null ? '' : ' · 已同步'}'
+                ? '已绑定${account.snapshot == null ? '' : ' · 已同步'}'
                 : '未绑定账户';
     return Container(
       padding: const EdgeInsets.all(16),
@@ -235,6 +237,17 @@ class _AirportCard extends StatelessWidget {
                         color: account.error != null ? Colors.orange : preset.color,
                       ),
                     ),
+                    if (connected && account.snapshot?.accountLabel != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        account.snapshot!.accountLabel!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.typography.compactDescription.copyWith(
+                          color: surge.textSecondary,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -251,15 +264,24 @@ class _AirportCard extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Text(
-            connected
-                ? '${preset.caption} · ${_trafficText()}'
-                : preset.caption,
+            preset.caption,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: context.typography.compactDescription.copyWith(
               color: surge.textSecondary,
             ),
           ),
+          if (connected) ...[
+            const SizedBox(height: 8),
+            Text(
+              _accountSummary(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: context.typography.compactDescription.copyWith(
+                color: surge.textSecondary,
+              ),
+            ),
+          ],
           if (account.error != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -276,10 +298,18 @@ class _AirportCard extends StatelessWidget {
                 child: OutlinedButton.icon(
                   onPressed: onOpen,
                   icon: Icon(
-                    connected ? Icons.dashboard_customize_rounded : Icons.login_rounded,
+                    connected && !account.requiresLogin
+                        ? Icons.dashboard_customize_rounded
+                        : Icons.person_add_alt_1_rounded,
                     size: 17,
                   ),
-                  label: Text(connected ? '账户中心' : '网页登录'),
+                  label: Text(
+                    account.requiresLogin
+                        ? '重新绑定账户'
+                        : connected
+                            ? '账户中心'
+                            : '绑定账户',
+                  ),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: preset.color,
                     side: BorderSide(color: preset.color.withValues(alpha: 0.45)),
@@ -291,7 +321,7 @@ class _AirportCard extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               IconButton(
-                tooltip: '管理订阅',
+                tooltip: '导入订阅',
                 onPressed: onAddProfile,
                 icon: Icon(Icons.link_rounded, color: preset.color),
               ),
@@ -300,6 +330,18 @@ class _AirportCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _accountSummary() {
+    final snapshot = account.snapshot;
+    if (snapshot == null) return '等待同步账户数据';
+    final expiry = snapshot.expireAt == null
+        ? null
+        : '到期 ${snapshot.expireAt!.toLocal().toString().split(' ').first}';
+    return [
+      _trafficText(),
+      if (expiry != null) expiry,
+    ].join(' · ');
   }
 }
 
@@ -416,11 +458,13 @@ class _AirportAccountPanel extends ConsumerWidget {
                 _InfoRow(label: '最近结果', value: snapshot.message!),
               const SizedBox(height: 8),
             ],
-            if (!account.isConnected)
+            if (!account.isConnected || account.requiresLogin)
               FilledButton.icon(
                 onPressed: () => _login(context, ref),
-                icon: const Icon(Icons.language_rounded),
-                label: const Text('打开官方网页登录'),
+                icon: const Icon(Icons.person_add_alt_1_rounded),
+                label: Text(
+                  account.requiresLogin ? '重新绑定账户' : '绑定账户',
+                ),
               )
             else ...[
               Row(
@@ -463,7 +507,7 @@ class _AirportAccountPanel extends ConsumerWidget {
               const SizedBox(height: 4),
               TextButton(
                 onPressed: () => _login(context, ref),
-                child: const Text('重新网页登录 / 更新会话'),
+                child: const Text('更新登录会话'),
               ),
             ],
           ],

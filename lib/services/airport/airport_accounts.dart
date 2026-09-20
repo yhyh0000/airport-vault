@@ -12,12 +12,14 @@ class AirportAccountState {
     this.snapshot,
     this.loading = false,
     this.error,
+    this.requiresLogin = false,
   });
 
   final AirportSession? session;
   final AirportSnapshot? snapshot;
   final bool loading;
   final String? error;
+  final bool requiresLogin;
 
   bool get isConnected => session != null;
 
@@ -26,6 +28,7 @@ class AirportAccountState {
     AirportSnapshot? snapshot,
     bool? loading,
     String? error,
+    bool? requiresLogin,
     bool clearSession = false,
     bool clearSnapshot = false,
     bool clearError = false,
@@ -35,6 +38,7 @@ class AirportAccountState {
       snapshot: clearSnapshot ? null : snapshot ?? this.snapshot,
       loading: loading ?? this.loading,
       error: clearError ? null : error ?? this.error,
+      requiresLogin: requiresLogin ?? this.requiresLogin,
     );
   }
 }
@@ -81,6 +85,8 @@ class AirportAccountsNotifier extends Notifier<AirportAccountsState> {
       state.forKind(session.kind).copyWith(
         session: session,
         clearError: true,
+        clearSnapshot: true,
+        requiresLogin: false,
       ),
     );
     await sync(session.kind);
@@ -103,7 +109,11 @@ class AirportAccountsNotifier extends Notifier<AirportAccountsState> {
       final snapshot = await _service.sync(session);
       state = state.copyWith(
         kind,
-        state.forKind(kind).copyWith(loading: false, snapshot: snapshot),
+        state.forKind(kind).copyWith(
+          loading: false,
+          snapshot: snapshot,
+          requiresLogin: false,
+        ),
       );
     } catch (error) {
       state = state.copyWith(
@@ -111,6 +121,7 @@ class AirportAccountsNotifier extends Notifier<AirportAccountsState> {
         state.forKind(kind).copyWith(
           loading: false,
           error: error.toString(),
+          requiresLogin: error is AirportAuthRequired,
         ),
       );
     }
@@ -128,7 +139,11 @@ class AirportAccountsNotifier extends Notifier<AirportAccountsState> {
       final snapshot = await _service.checkIn(session);
       state = state.copyWith(
         kind,
-        state.forKind(kind).copyWith(loading: false, snapshot: snapshot),
+        state.forKind(kind).copyWith(
+          loading: false,
+          snapshot: snapshot,
+          requiresLogin: false,
+        ),
       );
     } catch (error) {
       state = state.copyWith(
@@ -136,6 +151,7 @@ class AirportAccountsNotifier extends Notifier<AirportAccountsState> {
         state.forKind(kind).copyWith(
           loading: false,
           error: error.toString(),
+          requiresLogin: error is AirportAuthRequired,
         ),
       );
     }

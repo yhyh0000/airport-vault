@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -7,7 +8,7 @@ import 'airport_models.dart';
 
 /// Logs in through the airport's own web page so Geetest/Turnstile and other
 /// site-specific challenges stay in the official flow. The app only reads the
-/// resulting same-site cookie/localStorage after the user taps “完成登录”.
+/// resulting same-site cookie/localStorage after the user completes login.
 class AirportLoginPage extends StatefulWidget {
   const AirportLoginPage({
     required this.site,
@@ -26,7 +27,11 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
   late final WebViewController _controller;
   final WebViewCookieManager _cookieManager = WebViewCookieManager();
   bool _pageLoading = true;
+  bool _detectingSession = false;
+  bool _finishing = false;
   String? _lastUrl;
+  String _statusText = '登录成功后会自动返回账户中心';
+  Timer? _sessionDetectionTimer;
 
   @override
   void initState() {
@@ -41,6 +46,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
             setState(() {
               _pageLoading = true;
               _lastUrl = url;
+              if (!_finishing) _statusText = '登录成功后会自动返回账户中心';
             });
           },
           onPageFinished: (url) {
@@ -49,6 +55,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
               _pageLoading = false;
               _lastUrl = url;
             });
+            _scheduleSessionDetection();
           },
           onWebResourceError: (error) {
             if (!mounted) return;
@@ -59,6 +66,70 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
         ),
       )
       ..loadRequest(Uri.parse(widget.site.loginUrl(widget.baseUrl)));
+  }
+
+  @override
+  void dispose() {
+    _sessionDetectionTimer?.cancel();
+    super.dispose();
+  }
+
+  void _scheduleSessionDetection() {
+    _sessionDetectionTimer?.cancel();
+    var attempts = 0;
+    _sessionDetectionTimer = Timer.periodic(
+      const Duration(milliseconds: 900),
+      (timer) async {
+        attempts++;
+        await _tryFinishAfterLogin();
+        if (!mounted || _finishing || attempts >= 20) timer.cancel();
+      },
+    );
+  }
+
+  Future<void> _tryFinishAfterLogin() async {
+    if (_detectingSession || _finishing || !mounted) return;
+    _detectingSession = true;
+    try {
+      final url = await _currentUrl();
+      if (_isLoginUrl(url)) return;
+      final session = await _captureSession();
+      if (session == null) return;
+      final body = _decodeJsString(
+        await _controller.runJavaScriptReturningResult(
+          'document.body?.innerText ?? ""',
+        ),
+      ).toLowerCase();
+      final authenticated = session.accessToken != null ||
+          RegExp(
+            r'签到|签入|订阅|流量|账户|退出|logout|dashboard',
+            caseSensitive: false,
+          ).hasMatch(body);
+      if (authenticated) await _complete(session);
+    } catch (_) {
+      // Some SPAs do not expose their route immediately. The manual binding
+      // button remains available as a safe fallback.
+    } finally {
+      _detectingSession = false;
+    }
+  }
+
+  Future<String> _currentUrl() async {
+    try {
+      final value = await _controller.runJavaScriptReturningResult(
+        'window.location.href',
+      );
+      final url = _decodeJsString(value).trim();
+      if (url.isNotEmpty) return url;
+    } catch (_) {}
+    return _lastUrl ?? widget.baseUrl;
+  }
+
+  bool _isLoginUrl(String url) {
+    final lower = url.toLowerCase();
+    return lower.contains('/auth/login') ||
+        lower.contains('#/login') ||
+        lower.contains('/login');
   }
 
   Future<AirportSession?> _captureSession() async {
@@ -134,10 +205,20 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
     if (!mounted) return;
     if (session == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有读取到登录会话，请先完成网页登录')),
+        const SnackBar(content: Text('还没有读取到登录会话，请先完成账户登录')),
       );
       return;
     }
+    await _complete(session);
+  }
+
+  Future<void> _complete(AirportSession session) async {
+    if (_finishing || !mounted) return;
+    _finishing = true;
+    _sessionDetectionTimer?.cancel();
+    setState(() => _statusText = '登录成功，正在绑定账户…');
+    await Future<void>.delayed(const Duration(milliseconds: 180));
+    if (!mounted) return;
     Navigator.of(context).pop(session);
   }
 
@@ -145,7 +226,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('${widget.site.title}网页登录'),
+        title: Text('绑定${widget.site.title}账户'),
         actions: [
           IconButton(
             tooltip: '刷新',
@@ -166,7 +247,7 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
                 children: [
                   Expanded(
                     child: Text(
-                      _lastUrl ?? widget.baseUrl,
+                      _statusText,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.bodySmall,
@@ -174,9 +255,9 @@ class _AirportLoginPageState extends State<AirportLoginPage> {
                   ),
                   const SizedBox(width: 12),
                   FilledButton.icon(
-                    onPressed: _finish,
+                    onPressed: _finishing ? null : _finish,
                     icon: const Icon(Icons.lock_open_rounded, size: 18),
-                    label: const Text('完成登录'),
+                    label: Text(_finishing ? '正在绑定…' : '手动绑定账户'),
                   ),
                 ],
               ),

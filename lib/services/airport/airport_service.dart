@@ -101,7 +101,7 @@ class AirportService {
     _throwIfAuth(response);
     final html = _unwrapHtml(response.data?.toString() ?? '');
     if (_looksLikeLoginPage(html, response.realUri.toString())) {
-      throw const AirportAuthRequired('iKun 登录状态已失效，请重新网页登录');
+      throw const AirportAuthRequired('iKun 登录状态已失效，请重新绑定账户');
     }
     final userInfo = response.headers.value('subscription-userinfo');
     final metadata = '$html\n${userInfo ?? ''}';
@@ -161,7 +161,7 @@ class AirportService {
   ) async {
     html = _unwrapHtml(html);
     if (_looksLikeLoginPage(html, session.baseUrl)) {
-      throw const AirportAuthRequired('宝可梦机场登录状态已失效，请重新网页登录');
+      throw const AirportAuthRequired('宝可梦机场登录状态已失效，请重新绑定账户');
     }
     final traffic = _parseTraffic(html);
     return AirportSnapshot(
@@ -248,7 +248,7 @@ class AirportService {
     if (response.statusCode == 401 ||
         response.statusCode == 419 ||
         _looksLikeLoginPage(body, url)) {
-      throw const AirportAuthRequired('登录状态已失效，请重新网页登录');
+      throw const AirportAuthRequired('登录状态已失效，请重新绑定账户');
     }
     if ((response.statusCode ?? 500) >= 400) {
       throw AirportRequestFailed('机场网页返回 HTTP ${response.statusCode}');
