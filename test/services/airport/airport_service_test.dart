@@ -217,7 +217,7 @@ void main() {
     expect(snapshot.download, 2 * 1024 * 1024);
     expect(snapshot.total, 3 * 1024 * 1024 * 1024 + 2 * 1024 * 1024);
     expect(snapshot.subscriptionUrl,
-        'https://sub.example/link/secret-token&extend=1');
+        'https://sub.example/link/secret-token?extend=1');
   });
 
   test('iKun reads a real link from subscription history, not its page URL',
