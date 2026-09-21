@@ -294,6 +294,16 @@ class AirportService {
     return AirportSnapshot(
       kind: session.kind,
       baseUrl: session.baseUrl,
+      accountLabel: _firstMatch(html, [
+        RegExp(
+          r'(?:邮箱|email)[^<:：]{0,12}[:：]?\s*([^<\s]+@[^<\s]+)',
+          caseSensitive: false,
+        ),
+        RegExp(
+          r'(?:用户名|username)[^<:：]{0,12}[:：]?\s*([^<\s]+)',
+          caseSensitive: false,
+        ),
+      ]),
       upload: traffic.upload,
       download: traffic.download,
       total: traffic.total,
