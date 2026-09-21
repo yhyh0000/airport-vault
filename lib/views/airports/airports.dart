@@ -1,5 +1,3 @@
-import 'package:fl_clash/common/common.dart';
-import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/services/airport/airport.dart';
 import 'package:fl_clash/views/dashboard/widgets/airport_overview.dart';
 import 'package:fl_clash/widgets/surge/surge.dart';

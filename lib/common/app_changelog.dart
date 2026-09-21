@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.11',
+    date: '2026-09-21',
+    changes: [
+      '修复机场页面分析阶段的多余依赖，恢复正式 APK 构建',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.6.10',
     date: '2026-09-21',
     changes: [
