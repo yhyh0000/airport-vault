@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.14',
+    date: '2026-09-21',
+    changes: [
+      '修复 Dart 3.8 非空断言和可空集合元素 lint，继续完成正式打包',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.6.13',
     date: '2026-09-21',
     changes: [

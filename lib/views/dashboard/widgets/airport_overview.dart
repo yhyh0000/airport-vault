@@ -407,7 +407,7 @@ class _AirportCard extends StatelessWidget {
           if (error != null) ...[
             const SizedBox(height: 8),
             Text(
-              error!,
+              error,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: context.typography.badgeLabel.copyWith(color: Colors.orange),
@@ -462,7 +462,7 @@ class _AirportCard extends StatelessWidget {
         : '到期 ${snapshot.expireAt!.toLocal().toString().split(' ').first}';
     return [
       _trafficText(snapshot),
-      if (expiry != null) expiry,
+      ?expiry,
     ].join(' · ');
   }
 
