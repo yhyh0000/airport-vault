@@ -59,16 +59,31 @@ class _AirportWarehouseHero extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accounts = ref.watch(airportAccountsProvider);
-    final connected = AirportKind.values
-        .where((kind) => accounts.forKind(kind).isConnected)
-        .length;
-    final subscriptions = AirportKind.values
-        .where((kind) => accounts.forKind(kind).snapshot?.subscriptionUrl != null)
-        .length;
-    final attention = AirportKind.values.where((kind) {
-      final account = accounts.forKind(kind);
-      return account.error != null || account.requiresLogin;
-    }).length;
+    final connected = AirportKind.values.fold<int>(
+      0,
+      (total, kind) => total + accounts.forKind(kind).accounts.length,
+    );
+    final subscriptions = AirportKind.values.fold<int>(
+      0,
+      (total, kind) =>
+          total +
+          accounts
+              .forKind(kind)
+              .accounts
+              .where((account) => account.snapshot?.subscriptionUrl != null)
+              .length,
+    );
+    final attention = AirportKind.values.fold<int>(
+      0,
+      (total, kind) =>
+          total +
+          accounts
+              .forKind(kind)
+              .accounts
+              .where((account) =>
+                  account.error != null || account.requiresLogin)
+              .length,
+    );
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
       decoration: BoxDecoration(
@@ -142,7 +157,7 @@ class _AirportWarehouseHero extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: _VaultMetric(value: '$connected/2', label: '已绑定'),
+                child: _VaultMetric(value: '$connected', label: '已管理账号'),
               ),
               Expanded(
                 child: _VaultMetric(value: '$subscriptions', label: '订阅已发现'),

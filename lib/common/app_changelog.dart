@@ -12,6 +12,16 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.10',
+    date: '2026-09-21',
+    changes: [
+      '机场账户改为多账号并存，每个账号独立同步、签到和订阅管理',
+      '签到日期持久化，刷新和重启后仍正确显示今日签到状态',
+      '登录成功后自动发现并导入订阅，补充订阅管理和账号卡入口',
+      '兼容宝可梦 API 返回 403 时回退到机场网页账户数据',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.6.8',
     date: '2026-09-21',
     changes: [

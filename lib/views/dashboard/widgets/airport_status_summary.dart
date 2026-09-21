@@ -110,13 +110,15 @@ class AirportStatusSummary extends ConsumerWidget {
   }
 
   String _status(dynamic account) {
-    if (account.loading) return '同步中';
-    if (account.error != null) {
-      return account.requiresLogin ? '需要重新登录' : '同步失败';
-    }
-    if (account.snapshot?.checkinDone == true) return '今日已签到';
-    if (account.isConnected) return '已绑定';
-    return '未绑定';
+    if (!account.isConnected) return '未绑定';
+    final total = account.accounts.length;
+    final loading = account.accounts.where((item) => item.loading).length;
+    final errors = account.accounts.where((item) => item.error != null).length;
+    final signed = account.accounts.where((item) => item.checkedInToday).length;
+    if (loading > 0) return '$total 个账号 · 同步中 $loading';
+    if (errors > 0) return '$total 个账号 · $errors 项异常';
+    if (signed == total) return '$total 个账号 · 今日已签到';
+    return '$total 个账号 · $signed 个已签到';
   }
 }
 

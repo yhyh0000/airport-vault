@@ -251,4 +251,143 @@ class AirportSnapshot {
       fetchedAt: fetchedAt ?? this.fetchedAt,
     );
   }
+
+  Map<String, Object?> toJson() => {
+        'kind': kind.key,
+        'baseUrl': baseUrl,
+        'accountLabel': accountLabel,
+        'upload': upload,
+        'download': download,
+        'total': total,
+        'expireAt': expireAt?.toIso8601String(),
+        'subscriptionUrl': subscriptionUrl,
+        'checkinDone': checkinDone,
+        'message': message,
+        'fetchedAt': fetchedAt?.toIso8601String(),
+      };
+
+  factory AirportSnapshot.fromJson(Map<String, Object?> json) {
+    final kind = AirportKind.values.firstWhere(
+      (item) => item.key == json['kind'],
+      orElse: () => AirportKind.ikun,
+    );
+    return AirportSnapshot(
+      kind: kind,
+      baseUrl: json['baseUrl']?.toString() ?? airportSite(kind).defaultBaseUrl,
+      accountLabel: json['accountLabel']?.toString(),
+      upload: _intValue(json['upload']),
+      download: _intValue(json['download']),
+      total: _intValue(json['total']),
+      expireAt: DateTime.tryParse(json['expireAt']?.toString() ?? ''),
+      subscriptionUrl: json['subscriptionUrl']?.toString(),
+      checkinDone: json['checkinDone'] == true,
+      message: json['message']?.toString(),
+      fetchedAt: DateTime.tryParse(json['fetchedAt']?.toString() ?? ''),
+    );
+  }
+}
+
+int _intValue(Object? value) {
+  if (value is num) return value.round();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+/// A persisted airport account.  One airport can own several of these
+/// records; the selected account is managed by AirportAccountsState.
+class AirportAccountRecord {
+  const AirportAccountRecord({
+    required this.id,
+    required this.session,
+    this.snapshot,
+    this.lastCheckInAt,
+    this.loading = false,
+    this.error,
+    this.requiresLogin = false,
+  });
+
+  final String id;
+  final AirportSession session;
+  final AirportSnapshot? snapshot;
+  final DateTime? lastCheckInAt;
+  final bool loading;
+  final String? error;
+  final bool requiresLogin;
+
+  bool get checkedInToday {
+    final value = lastCheckInAt;
+    if (value == null) {
+      final fetchedAt = snapshot?.fetchedAt;
+      if (fetchedAt == null || snapshot?.checkinDone != true) return false;
+      final now = DateTime.now();
+      return fetchedAt.year == now.year &&
+          fetchedAt.month == now.month &&
+          fetchedAt.day == now.day;
+    }
+    final now = DateTime.now();
+    return value.year == now.year &&
+        value.month == now.month &&
+        value.day == now.day;
+  }
+
+  String get displayLabel {
+    final label = snapshot?.accountLabel?.trim();
+    if (label != null && label.isNotEmpty) return label;
+    return '机场账号';
+  }
+
+  AirportAccountRecord copyWith({
+    AirportSession? session,
+    AirportSnapshot? snapshot,
+    DateTime? lastCheckInAt,
+    bool? loading,
+    String? error,
+    bool? requiresLogin,
+    bool clearError = false,
+    bool clearSnapshot = false,
+    bool clearLastCheckInAt = false,
+  }) {
+    return AirportAccountRecord(
+      id: id,
+      session: session ?? this.session,
+      snapshot: clearSnapshot ? null : snapshot ?? this.snapshot,
+      lastCheckInAt:
+          clearLastCheckInAt ? null : lastCheckInAt ?? this.lastCheckInAt,
+      loading: loading ?? this.loading,
+      error: clearError ? null : error ?? this.error,
+      requiresLogin: requiresLogin ?? this.requiresLogin,
+    );
+  }
+
+  Map<String, Object?> toJson() => {
+        'id': id,
+        'session': session.toJson(),
+        'snapshot': snapshot?.toJson(),
+        'lastCheckInAt': lastCheckInAt?.toIso8601String(),
+        'loading': false,
+        'error': error,
+        'requiresLogin': requiresLogin,
+      };
+
+  factory AirportAccountRecord.fromJson(Map<String, Object?> json) {
+    final sessionJson = json['session'];
+    final snapshotJson = json['snapshot'];
+    final session = sessionJson is Map
+        ? AirportSession.fromJson(Map<String, Object?>.from(sessionJson))
+        : AirportSession(
+            kind: AirportKind.ikun,
+            baseUrl: airportSite(AirportKind.ikun).defaultBaseUrl,
+            cookie: '',
+          );
+    return AirportAccountRecord(
+      id: json['id']?.toString() ?? '',
+      session: session,
+      snapshot: snapshotJson is Map
+          ? AirportSnapshot.fromJson(Map<String, Object?>.from(snapshotJson))
+          : null,
+      lastCheckInAt: DateTime.tryParse(json['lastCheckInAt']?.toString() ?? ''),
+      loading: false,
+      error: json['error']?.toString(),
+      requiresLogin: json['requiresLogin'] == true,
+    );
+  }
 }

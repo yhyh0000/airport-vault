@@ -249,12 +249,22 @@ class AirportService {
   }
 
   Future<AirportSnapshot> _syncPokemon(AirportSession session) async {
-    final infoResponse = await _request(
-      session,
-      '/user/info',
-      baseUrl: _pokemonApiBaseUrl(session),
-    );
-    if (infoResponse.statusCode == 404 || infoResponse.statusCode == 405) {
+    Response<dynamic>? infoResponse;
+    for (final apiBase in _pokemonApiBaseUrls(session)) {
+      final response = await _request(
+        session,
+        '/user/info',
+        baseUrl: apiBase,
+      );
+      if (response.statusCode == 401 || response.statusCode == 419) {
+        _throwIfAuth(response);
+      }
+      if ((response.statusCode ?? 500) < 400) {
+        infoResponse = response;
+        break;
+      }
+    }
+    if (infoResponse == null) {
       final htmlResponse = await _request(session, '/');
       _throwIfAuth(htmlResponse);
       return _syncHtmlFallback(session, htmlResponse.data?.toString() ?? '');
@@ -314,14 +324,17 @@ class AirportService {
   }
 
   Future<Response<dynamic>> _pokemonCheckin(AirportSession session) async {
-    final api = await _request(
-      session,
-      '/user/checkin',
-      baseUrl: _pokemonApiBaseUrl(session),
-      method: 'POST',
-      headers: const {'X-Requested-With': 'XMLHttpRequest'},
-    );
-    if (api.statusCode != 404 && api.statusCode != 405) return api;
+    for (final apiBase in _pokemonApiBaseUrls(session)) {
+      final api = await _request(
+        session,
+        '/user/checkin',
+        baseUrl: apiBase,
+        method: 'POST',
+        headers: const {'X-Requested-With': 'XMLHttpRequest'},
+      );
+      if ((api.statusCode ?? 500) < 400) return api;
+      if (api.statusCode == 401 || api.statusCode == 419) return api;
+    }
     return _request(
       session,
       '/user/checkin',
@@ -585,6 +598,19 @@ class AirportService {
     return base.endsWith('/api/v1') ? base : '$base/api/v1';
   }
 
+  List<String> _pokemonApiBaseUrls(AirportSession session) {
+    final values = <String>[_pokemonApiBaseUrl(session)];
+    // Some Pokemon themes serve the API from the web host, while other
+    // themes publish a separate API host.  Try the web host after the public
+    // API host so a 403 from one deployment does not invalidate the session.
+    final webBase = session.baseUrl.replaceFirst(RegExp(r'/+$'), '');
+    final webApi = webBase.endsWith('/api/v1')
+        ? webBase
+        : '$webBase/api/v1';
+    if (!values.contains(webApi)) values.add(webApi);
+    return values;
+  }
+
   int? _numberOrNull(Object? value) {
     if (value is num) return value.round();
     return int.tryParse(value?.toString() ?? '');
@@ -738,6 +764,32 @@ class AirportService {
   }
 
   String? _findSubscriptionUrl(String html, String baseUrl) {
+    // Current SSPanel themes sometimes put the real URL in an inline copy
+    // handler instead of an href/data attribute.  Scan those raw values before
+    // falling back to the older label-oriented patterns.
+    final looseCandidates = [
+      RegExp(
+        r'''https?://[^"'<>\s]+/(?:link|sub)/[^"'<>\s]+''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''/(?:link|sub)/[^"'<>\s]+''',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'''(?:copy|clipboard|订阅|subscription)[\s\S]{0,220}?((?:https?:)?//[^"'<>\s]+)''',
+        caseSensitive: false,
+      ),
+    ];
+    for (final pattern in looseCandidates) {
+      for (final match in pattern.allMatches(html)) {
+        final value = match.groupCount == 0 ? match.group(0) : match.group(1);
+        final resolved = value == null
+            ? null
+            : _subscriptionCandidate(value, baseUrl);
+        if (resolved != null) return resolved;
+      }
+    }
     final directAttributes = RegExp(
       r'''(?:href|data-url|data-clipboard-text|value)=['"]([^'"]*(?:subscribe|subscription|clash|sing-box|/link/|/sub/)[^'"]*)['"]''',
       caseSensitive: false,

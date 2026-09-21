@@ -110,6 +110,12 @@ void main() {
         await request.response.close();
         return;
       }
+      if (mode == 'pokemon-403' &&
+          request.uri.path == '/api/v1/user/info') {
+        request.response.statusCode = HttpStatus.forbidden;
+        await request.response.close();
+        return;
+      }
       if (mode == 'pokemon-405' && request.uri.path == '/') {
         await _write(
           request,
@@ -118,6 +124,20 @@ void main() {
               email: fallback@example.com
               <div>剩余流量 <span class="counter">3</span> GB</div>
               <div>总流量 <span class="counter">10</span> GB</div>
+            </body></html>
+          '''),
+          ContentType.html,
+        );
+        return;
+      }
+      if (mode == 'pokemon-403' && request.uri.path == '/') {
+        await _write(
+          request,
+          _wrappedHtml('''
+            <html><body>
+              email: fallback-403@example.com
+              <div>剩余流量 <span class="counter">2</span> GB</div>
+              <div>总流量 <span class="counter">8</span> GB</div>
             </body></html>
           '''),
           ContentType.html,
@@ -253,6 +273,23 @@ void main() {
 
     expect(snapshot.accountLabel, 'fallback@example.com');
     expect(snapshot.total, 10 * 1024 * 1024 * 1024);
+    expect(requests.containsKey('GET /api/v1/user/info'), isTrue);
+    expect(requests.containsKey('GET /'), isTrue);
+  });
+
+  test('Pokemon keeps the account when the API answers HTTP 403', () async {
+    mode = 'pokemon-403';
+    final session = AirportSession(
+      kind: AirportKind.pokemon,
+      baseUrl: baseUrl,
+      cookie: 'session=ok',
+      localStorageJson: '{"token":"token-123"}',
+    );
+
+    final snapshot = await AirportService().sync(session);
+
+    expect(snapshot.accountLabel, 'fallback-403@example.com');
+    expect(snapshot.total, 8 * 1024 * 1024 * 1024);
     expect(requests.containsKey('GET /api/v1/user/info'), isTrue);
     expect(requests.containsKey('GET /'), isTrue);
   });

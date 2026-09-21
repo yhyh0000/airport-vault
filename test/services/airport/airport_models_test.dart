@@ -40,4 +40,32 @@ void main() {
     expect(session.authorizationHeader, 'Bearer token-456');
     expect(session.apiBaseUrl, 'https://api.example.test');
   });
+
+  test('airport account records persist independently with today check-in', () {
+    final checkedAt = DateTime.now();
+    const session = AirportSession(
+      kind: AirportKind.ikun,
+      baseUrl: 'https://ikuuu.top',
+      cookie: 'session=account-a',
+    );
+    final record = AirportAccountRecord(
+      id: 'account-a',
+      session: session,
+      snapshot: AirportSnapshot(
+        kind: AirportKind.ikun,
+        baseUrl: session.baseUrl,
+        accountLabel: 'a@example.com',
+        checkinDone: true,
+        fetchedAt: checkedAt,
+      ),
+      lastCheckInAt: checkedAt,
+    );
+
+    final restored = AirportAccountRecord.fromJson(record.toJson());
+
+    expect(restored.id, 'account-a');
+    expect(restored.displayLabel, 'a@example.com');
+    expect(restored.checkedInToday, isTrue);
+    expect(restored.session.cookie, 'session=account-a');
+  });
 }
