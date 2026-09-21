@@ -43,7 +43,7 @@ void main() {
                 <div class="traffic">今日已用<br><span class="counter">2</span> MB</div>
                 <div class="traffic">剩余流量 <span class="counter">3</span> GB</div>
                 <a data-clipboard-text="https:///link/invalid">无效地址</a>
-                <a data-clipboard-text="https://sub.example/link/secret-token">一键订阅</a>
+                <button data-clipboard-text-encoded="aHR0cHM6Ly9zdWIuZXhhbXBsZS9saW5rL3NlY3JldC10b2tlbg==" data-clipboard-text-extra="&amp;extend=1">一键订阅</button>
               </body></html>
             '''),
             ContentType.html,
@@ -216,7 +216,8 @@ void main() {
     expect(snapshot.upload, 0);
     expect(snapshot.download, 2 * 1024 * 1024);
     expect(snapshot.total, 3 * 1024 * 1024 * 1024 + 2 * 1024 * 1024);
-    expect(snapshot.subscriptionUrl, 'https://sub.example/link/secret-token');
+    expect(snapshot.subscriptionUrl,
+        'https://sub.example/link/secret-token&extend=1');
   });
 
   test('iKun reads a real link from subscription history, not its page URL',

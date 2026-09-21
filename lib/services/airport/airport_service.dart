@@ -344,38 +344,52 @@ class AirportService {
   }
 
   Future<String?> _getPokemonSubscribeUrl(AirportSession session) async {
-    late final Response<dynamic> response;
-    try {
-      response = await _request(
-        session,
-        '/user/getSubscribe',
-        baseUrl: _pokemonApiBaseUrl(session),
+    for (final apiBase in _pokemonApiBaseUrls(session)) {
+      late final Response<dynamic> response;
+      try {
+        response = await _request(
+          session,
+          '/user/getSubscribe',
+          baseUrl: apiBase,
+        );
+      } on AirportRequestFailed {
+        continue;
+      }
+      if (response.statusCode == 404 || response.statusCode == 405) continue;
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        // A theme can expose account info on one host and subscription data on
+        // the other. Try the next configured API host before declaring the
+        // session expired.
+        continue;
+      }
+      _throwIfAuth(response);
+      final json = _pokemonJsonMap(response.data);
+      if (json == null) continue;
+      final direct = json['data']?.toString().trim();
+      if (direct != null && direct.isNotEmpty && direct != 'null') {
+        // XBoard themes may return the source as a relative path or with
+        // JavaScript escaping, not only as an absolute URL.
+        final normalized = normalizeProfileSourceUrl(
+          direct,
+          baseUrl: session.baseUrl,
+        );
+        if (normalized != null) return normalized;
+      }
+      final data = _asMap(json['data']) ?? json;
+      final value = _stringValue(
+        data,
+        const ['subscribe_url', 'subscribeUrl', 'subscription_url', 'url'],
       );
-    } on AirportRequestFailed {
-      // Some older V2Board deployments expose user info but not the optional
-      // subscription endpoint.  Account management should still work there.
-      return null;
-    }
-    if (response.statusCode == 404 || response.statusCode == 405) return null;
-    _throwIfAuth(response);
-    final json = _pokemonJsonMap(response.data);
-    if (json == null) return null;
-    final direct = json['data']?.toString().trim();
-    if (direct != null && direct.isNotEmpty && direct != 'null') {
-      // XBoard themes may return the source as a relative path or with
-      // JavaScript escaping, not only as an absolute URL.
-      final normalized = normalizeProfileSourceUrl(
-        direct,
-        baseUrl: session.baseUrl,
-      );
+      final normalized = value == null
+          ? null
+          : _absoluteUrl(value, session.baseUrl);
       if (normalized != null) return normalized;
     }
-    final data = _asMap(json['data']) ?? json;
-    final value = _stringValue(
-      data,
-      const ['subscribe_url', 'subscribeUrl', 'subscription_url', 'url'],
-    );
-    return value == null ? null : _absoluteUrl(value, session.baseUrl);
+
+    // Some XBoard builds already place subscribe_url in localStorage after
+    // login. Use it as a local fallback when getSubscribe is protected by a
+    // theme-specific gateway.
+    return _pokemonStorageSubscribeUrl(session);
   }
 
   Future<Response<dynamic>> _request(
@@ -392,6 +406,7 @@ class AirportService {
     final requestHeaders = <String, String>{
       'Referer': '$sessionBase/',
       'Origin': sessionBase,
+      if (session.kind == AirportKind.pokemon) 'theme-ua': 'mala-pro',
       if (base == sessionBase && session.cookie.trim().isNotEmpty)
         'Cookie': session.cookie,
       if (session.authorizationHeader != null)
@@ -602,6 +617,30 @@ class AirportService {
     return base.endsWith('/api/v1') ? base : '$base/api/v1';
   }
 
+  String? _pokemonStorageSubscribeUrl(AirportSession session) {
+    try {
+      final decoded = jsonDecode(session.localStorageJson);
+      final maps = <Map<String, dynamic>>[
+        if (decoded is Map) Map<String, dynamic>.from(decoded),
+        if (decoded is Map && decoded['user'] is Map)
+          Map<String, dynamic>.from(decoded['user'] as Map),
+        if (decoded is Map && decoded['data'] is Map)
+          Map<String, dynamic>.from(decoded['data'] as Map),
+      ];
+      for (final map in maps) {
+        final value = _stringValue(
+          map,
+          const ['subscribe_url', 'subscribeUrl', 'subscription_url'],
+        );
+        final normalized = value == null
+            ? null
+            : _absoluteUrl(value, session.baseUrl);
+        if (normalized != null) return normalized;
+      }
+    } catch (_) {}
+    return null;
+  }
+
   List<String> _pokemonApiBaseUrls(AirportSession session) {
     final values = <String>[_pokemonApiBaseUrl(session)];
     // Some Pokemon themes serve the API from the web host, while other
@@ -768,6 +807,25 @@ class AirportService {
   }
 
   String? _findSubscriptionUrl(String html, String baseUrl) {
+    // iKun's current page does not render the real source URL directly. It
+    // stores a Base64 value on the client selector and keeps extra query
+    // parameters in a sibling attribute. Decode this first so the later
+    // loose HTML patterns cannot mistake /user/subscribe_log for a source.
+    final encodedTags = RegExp(
+      r'''<[^>]+data-clipboard-text-encoded\s*=\s*["']([^"']+)["'][^>]*>''',
+      caseSensitive: false,
+    );
+    for (final match in encodedTags.allMatches(html)) {
+      final tag = match.group(0)!;
+      final encoded = match.group(1);
+      final decoded = encoded == null ? null : _decodeSubscriptionValue(encoded);
+      if (decoded == null) continue;
+      final extra = _readHtmlAttribute(tag, 'data-clipboard-text-extra');
+      final candidate = _appendSubscriptionExtra(decoded, extra);
+      final resolved = _subscriptionCandidate(candidate, baseUrl);
+      if (resolved != null) return resolved;
+    }
+
     // Current SSPanel themes sometimes put the real URL in an inline copy
     // handler instead of an href/data attribute.  Scan those raw values before
     // falling back to the older label-oriented patterns.
@@ -858,6 +916,40 @@ class AirportService {
 
   String? _absoluteUrl(String value, String baseUrl) {
     return normalizeProfileSourceUrl(value, baseUrl: baseUrl);
+  }
+
+  String? _readHtmlAttribute(String tag, String name) {
+    final match = RegExp(
+      '$name\\s*=\\s*[\'\"]([^\'\"]*)[\'\"]',
+      caseSensitive: false,
+    ).firstMatch(tag);
+    return match?.group(1)?.trim();
+  }
+
+  String? _decodeSubscriptionValue(String value) {
+    final encoded = value.trim().replaceAll(' ', '+');
+    if (encoded.isEmpty) return null;
+    for (final decoder in [base64.decode, base64Url.decode]) {
+      try {
+        final decoded = utf8.decode(decoder(_padBase64(encoded))).trim();
+        if (decoded.isNotEmpty) return decoded;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  String _appendSubscriptionExtra(String value, String? extra) {
+    final suffix = extra?.trim().replaceAll('&amp;', '&');
+    if (suffix == null || suffix.isEmpty || value.contains(suffix)) return value;
+    if (suffix.startsWith('?')) {
+      return value.contains('?')
+          ? '$value&${suffix.substring(1)}'
+          : '$value$suffix';
+    }
+    if (suffix.startsWith('&')) {
+      return value.contains('?') ? '$value$suffix' : '$value?${suffix.substring(1)}';
+    }
+    return value.contains('?') ? '$value&$suffix' : '$value?$suffix';
   }
 
   String _stripHtml(String value) {
