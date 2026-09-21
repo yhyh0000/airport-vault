@@ -361,10 +361,14 @@ class AirportService {
     final json = _pokemonJsonMap(response.data);
     if (json == null) return null;
     final direct = json['data']?.toString().trim();
-    if (direct != null &&
-        direct.isNotEmpty &&
-        (direct.startsWith('http://') || direct.startsWith('https://'))) {
-      return normalizeProfileSourceUrl(direct, baseUrl: session.baseUrl);
+    if (direct != null && direct.isNotEmpty && direct != 'null') {
+      // XBoard themes may return the source as a relative path or with
+      // JavaScript escaping, not only as an absolute URL.
+      final normalized = normalizeProfileSourceUrl(
+        direct,
+        baseUrl: session.baseUrl,
+      );
+      if (normalized != null) return normalized;
     }
     final data = _asMap(json['data']) ?? json;
     final value = _stringValue(
@@ -831,8 +835,8 @@ class AirportService {
   String? _subscriptionCandidate(String value, String baseUrl) {
     final resolved = _absoluteUrl(value, baseUrl);
     if (resolved == null) return null;
-    final uri = Uri.tryParse(resolved);
-    if (uri == null || uri.host.isEmpty) return null;
+    final uri = parseProfileSourceUri(resolved);
+    if (uri == null) return null;
     final path = uri.path.toLowerCase();
     // /user/subscribe_log is a navigation page, not a Clash/XBoard source.
     if (path.contains('/subscribe_log') ||

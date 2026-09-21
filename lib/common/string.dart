@@ -4,45 +4,82 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:fl_clash/common/common.dart';
 
-/// Normalizes a profile/subscription URL before it reaches Dio.
+/// Parses a profile/subscription source into a URI that Dio can actually
+/// request.
 ///
-/// Airport panels sometimes expose `/link/...`, `//host/link/...`, or an
-/// HTML-escaped URL instead of a fully-qualified URL. Dio accepts the string
-/// type but fails later with the much less useful "No host specified" error.
-String? normalizeProfileSourceUrl(
+/// Airport panels do not all return the same representation. Depending on the
+/// theme, the value may be a relative `/link/...`, a protocol-relative URL,
+/// HTML/JavaScript escaped text (`https:\/\/...`), or a quoted/percent-encoded
+/// value. Keeping this conversion in one place prevents a malformed value from
+/// reaching Dio, where it otherwise becomes the opaque "No host specified"
+/// exception shown in the import dialog.
+Uri? parseProfileSourceUri(
   String value, {
   String? baseUrl,
 }) {
-  var candidate = value
-      .trim()
-      .replaceAll('&amp;', '&')
-      .replaceAll('&quot;', '"')
-      .replaceAll('&#39;', "'")
-      .replaceAll(RegExp(r'[\r\n\t]'), '');
+  final candidates = <String>[];
+  var candidate = value.trim();
   if (candidate.isEmpty) return null;
 
-  final candidates = <String>[candidate];
+  void addCandidate(String input) {
+    var normalized = input
+        .trim()
+        .replaceAll('&amp;', '&')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&#x27;', "'")
+        .replaceAll(r'\/', '/')
+        .replaceAll(r'\"', '"')
+        .replaceAll(RegExp(r'[\r\n\t]'), '');
+    while (normalized.length >= 2 &&
+        ((normalized.startsWith('"') && normalized.endsWith('"')) ||
+            (normalized.startsWith("'") && normalized.endsWith("'")))) {
+      normalized = normalized.substring(1, normalized.length - 1).trim();
+    }
+    if (normalized.isNotEmpty && !candidates.contains(normalized)) {
+      candidates.add(normalized);
+    }
+  }
+
+  addCandidate(candidate);
   try {
     final decoded = Uri.decodeFull(candidate);
-    if (decoded != candidate) candidates.add(decoded);
+    if (decoded != candidate) addCandidate(decoded);
   } catch (_) {}
 
-  final base = baseUrl == null ? null : Uri.tryParse(baseUrl.trim());
+  // A copied value can include a label such as `订阅地址：` before the actual
+  // URL. Extract only an embedded web URL in that case; do not do this for
+  // arbitrary text unless a real http(s) URL is present.
+  final embedded = RegExp(r'(?:(?:https?:)?//)[^\s"<>]+').firstMatch(candidate);
+  if (embedded != null) addCandidate(embedded.group(0)!);
+
+  Uri? base;
+  if (baseUrl != null) {
+    base = Uri.tryParse(baseUrl.trim());
+    if (!_isHttpUri(base)) base = null;
+  }
+
   for (final raw in candidates) {
-    candidate = raw;
-    if (candidate.startsWith('//')) candidate = 'https:$candidate';
-    if (candidate.startsWith('www.')) candidate = 'https://$candidate';
+    var current = raw;
+    if (current.startsWith('//')) current = 'https:$current';
+    if (current.startsWith('www.')) current = 'https://$current';
 
-    final direct = Uri.tryParse(candidate);
-    if (_isHttpUri(direct)) return direct!.toString();
+    final direct = Uri.tryParse(current);
+    if (_isHttpUri(direct)) return direct;
 
-    if (base != null && _isHttpUri(base) && !candidate.contains('://')) {
-      final resolved = base.resolve(candidate);
-      if (_isHttpUri(resolved)) return resolved.toString();
+    if (base != null && !current.contains('://')) {
+      final resolved = base.resolve(current);
+      if (_isHttpUri(resolved)) return resolved;
     }
   }
   return null;
 }
+
+String? normalizeProfileSourceUrl(
+  String value, {
+  String? baseUrl,
+}) =>
+    parseProfileSourceUri(value, baseUrl: baseUrl)?.toString();
 
 bool _isHttpUri(Uri? uri) {
   if (uri == null || uri.host.isEmpty) return false;

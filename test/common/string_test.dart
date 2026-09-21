@@ -49,6 +49,28 @@ void main() {
     test('rejects a URL without a host', () {
       expect(normalizeProfileSourceUrl('https:///link/token'), isNull);
     });
+
+    test('unescapes a JavaScript URL', () {
+      expect(
+        normalizeProfileSourceUrl(r'"https:\/\/sub.example\/link\/token"'),
+        'https://sub.example/link/token',
+      );
+    });
+
+    test('extracts a URL copied with a label', () {
+      expect(
+        normalizeProfileSourceUrl('订阅地址：https://sub.example/link/token'),
+        'https://sub.example/link/token',
+      );
+    });
+
+    test('resolves an HTML escaped relative link', () {
+      expect(
+        normalizeProfileSourceUrl('/link/token&amp;client=clash',
+            baseUrl: 'https://ikuuu.top'),
+        'https://ikuuu.top/link/token&client=clash',
+      );
+    });
   });
 
   group('StringExtension.splitByMultipleSeparators', () {

@@ -159,9 +159,20 @@ extension ProfileExtension on Profile {
   Future<bool> get sourceExists async => (await _getFile()).exists();
 
   Future<ProfileSourceResponse> downloadSource() async {
+    // A profile can come from an older database, a copied airport page, or a
+    // third-party deep link. Re-check the persisted value immediately before
+    // Dio is called so malformed data can never surface as
+    // "No host specified in URI".
+    final normalizedUrl = normalizeProfileSourceUrl(url);
+    if (normalizedUrl == null) {
+      throw const InvalidProfileSourceUrl();
+    }
     final response = sourceHeaders.isEmpty
-        ? await request.getFileResponseForUrl(url)
-        : await request.getFileResponseForUrlWithHeaders(url, sourceHeaders);
+        ? await request.getFileResponseForUrl(normalizedUrl)
+        : await request.getFileResponseForUrlWithHeaders(
+            normalizedUrl,
+            sourceHeaders,
+          );
     final disposition = response.headers.value('content-disposition');
     final userinfo = response.headers.value('subscription-userinfo');
     return ProfileSourceResponse(
