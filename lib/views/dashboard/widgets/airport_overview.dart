@@ -587,7 +587,7 @@ class _AirportAccountPanel extends ConsumerWidget {
       context,
       ref,
       subscriptionUrl,
-      account.session!,
+      account.session,
       accountId: savedId,
     );
   }
@@ -839,7 +839,7 @@ class _AirportAccountPanel extends ConsumerWidget {
                 ],
               )
             else ...[
-              if (preset.kind == AirportKind.pokemon && record != null) ...[
+              if (preset.kind == AirportKind.pokemon) ...[
                 OutlinedButton.icon(
                   onPressed: record.loading
                       ? null

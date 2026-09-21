@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.15',
+    date: '2026-09-21',
+    changes: [
+      '移除多账号账户中心中的冗余空值判断，完成最终 Analyze 清理',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.6.14',
     date: '2026-09-21',
     changes: [
