@@ -238,7 +238,7 @@ class _AirportWorkflowCard extends StatelessWidget {
           const Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: const [
+            children: [
               _WorkflowStep(label: '保存会话', icon: Icons.lock_rounded),
               _WorkflowStep(label: '同步资料', icon: Icons.sync_rounded),
               _WorkflowStep(label: '发现订阅', icon: Icons.search_rounded),

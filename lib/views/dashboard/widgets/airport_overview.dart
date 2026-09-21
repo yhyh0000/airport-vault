@@ -3,7 +3,6 @@ import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/services/airport/airport.dart';
 import 'package:fl_clash/services/profile_source_mutation.dart';
-import 'package:fl_clash/state.dart';
 import 'package:fl_clash/widgets/surge/surge.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
