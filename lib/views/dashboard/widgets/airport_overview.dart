@@ -760,6 +760,7 @@ class _AirportAccountPanel extends ConsumerWidget {
         ? account.activeAccount
         : account.accountById(accountId!);
     final snapshot = record?.snapshot;
+    final subscriptionUrl = snapshot?.subscriptionUrl;
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
@@ -881,13 +882,13 @@ class _AirportAccountPanel extends ConsumerWidget {
                   ),
                 ],
               ),
-              if (snapshot?.subscriptionUrl != null) ...[
+              if (subscriptionUrl != null) ...[
                 const SizedBox(height: 10),
                 OutlinedButton.icon(
                   onPressed: () => _importSubscription(
                     context,
                     ref,
-                    snapshot!.subscriptionUrl!,
+                    subscriptionUrl,
                     record.session,
                     accountId: record.id,
                   ),
@@ -897,7 +898,7 @@ class _AirportAccountPanel extends ConsumerWidget {
                 TextButton.icon(
                   onPressed: () async {
                     await Clipboard.setData(
-                      ClipboardData(text: snapshot.subscriptionUrl!),
+                      ClipboardData(text: subscriptionUrl),
                     );
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(

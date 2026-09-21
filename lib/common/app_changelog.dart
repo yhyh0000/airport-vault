@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.16',
+    date: '2026-09-21',
+    changes: [
+      '修复订阅复制按钮的异步空值访问，完成多账号页面编译修复',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.6.15',
     date: '2026-09-21',
     changes: [
