@@ -12,13 +12,6 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
-    version: 'v0.6.9',
-    date: '2026-09-21',
-    changes: [
-      '提供与正式包共存的 QA 安装包，用于保留模拟器旧包数据验证',
-    ],
-  ),
-  AppChangelogEntry(
     version: 'v0.6.8',
     date: '2026-09-21',
     changes: [
