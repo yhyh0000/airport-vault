@@ -235,7 +235,7 @@ class _AirportWorkflowCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          Wrap(
+          const Wrap(
             spacing: 8,
             runSpacing: 8,
             children: const [

@@ -12,6 +12,13 @@ class AppChangelogEntry {
 
 const appChangelogEntries = <AppChangelogEntry>[
   AppChangelogEntry(
+    version: 'v0.6.12',
+    date: '2026-09-21',
+    changes: [
+      '修复正式构建中的页面依赖和常量 lint，继续保障多账号版本可发布',
+    ],
+  ),
+  AppChangelogEntry(
     version: 'v0.6.11',
     date: '2026-09-21',
     changes: [
