@@ -87,8 +87,19 @@ void main() {
         );
         return;
       }
-      if ((mode == 'pokemon' || mode == 'pokemon-gift') &&
+      if ((mode == 'pokemon' || mode == 'pokemon-gift' ||
+              mode == 'pokemon-encoded') &&
           request.uri.path == '/api/v1/user/info') {
+        if (mode == 'pokemon-encoded') {
+          await _write(
+            request,
+            _pokemonEncoded('''
+              {"data":{"email":"encoded@example.com","u":1024,"d":2048,"transfer_enable":4096,"expired_at":1893456000}}
+            '''),
+            ContentType.json,
+          );
+          return;
+        }
         await _write(
           request,
           jsonEncode({
@@ -144,8 +155,17 @@ void main() {
         );
         return;
       }
-      if ((mode == 'pokemon' || mode == 'pokemon-gift') &&
+      if ((mode == 'pokemon' || mode == 'pokemon-gift' ||
+              mode == 'pokemon-encoded') &&
           request.uri.path == '/api/v1/user/getSubscribe') {
+        if (mode == 'pokemon-encoded') {
+          await _write(
+            request,
+            _pokemonEncoded('{"data":"$baseUrl/api/v1/client/subscribe?token=encoded"}'),
+            ContentType.json,
+          );
+          return;
+        }
         await _write(
           request,
           jsonEncode({'data': '$baseUrl/api/v1/client/subscribe?token=pika'}),
@@ -261,6 +281,26 @@ void main() {
     expect(requests['POST /api/v1/user/checkin'], isEmpty);
   });
 
+  test('Pokemon unwraps the quoted encrypted response used by the web client',
+      () async {
+    mode = 'pokemon-encoded';
+    final session = AirportSession(
+      kind: AirportKind.pokemon,
+      baseUrl: baseUrl,
+      cookie: 'session=ok',
+      localStorageJson: '{"auth_data":"opaque-token"}',
+    );
+
+    final snapshot = await AirportService().sync(session);
+
+    expect(snapshot.accountLabel, 'encoded@example.com');
+    expect(snapshot.upload, 1024);
+    expect(snapshot.download, 2048);
+    expect(snapshot.total, 4096);
+    expect(snapshot.subscriptionUrl,
+        '$baseUrl/api/v1/client/subscribe?token=encoded');
+  });
+
   test('Pokemon falls back when an optional API answers HTTP 405', () async {
     mode = 'pokemon-405';
     final session = AirportSession(
@@ -328,4 +368,19 @@ Future<void> _write(
   request.response.headers.contentType = contentType;
   request.response.write(body);
   await request.response.close();
+}
+
+String _pokemonEncoded(String json) {
+  const encrypted =
+      'nsz{gAWrkXlx08J6Eq:V4[deO1DQTCwm2oB3ty9jSYI]7RM5bHiUam,c}KuPGpNhZLvF';
+  const plain =
+      'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,[]{}:';
+  var value = json.trim();
+  for (var round = 0; round < 10; round++) {
+    value = value.split('').map((character) {
+      final index = plain.indexOf(character);
+      return index < 0 ? character : encrypted[index];
+    }).join();
+  }
+  return '"${base64Encode(utf8.encode(value))}"';
 }

@@ -618,7 +618,16 @@ class AirportService {
     if (direct != null) return direct;
     if (value is! String || value.trim().isEmpty) return null;
     try {
-      var decoded = utf8.decode(base64Decode(_padBase64(value.trim())));
+      var encoded = value.trim();
+      // Dio is configured with a plain response type, so a server response
+      // containing a JSON string arrives with its surrounding quotes. Axios
+      // (used by the official web client) removes those quotes before calling
+      // atob(). Normalize the two representations to the same payload.
+      if (encoded.startsWith('"') && encoded.endsWith('"')) {
+        final unwrapped = jsonDecode(encoded);
+        if (unwrapped is String) encoded = unwrapped.trim();
+      }
+      var decoded = utf8.decode(base64Decode(_padBase64(encoded)));
       for (var i = 0; i < 10; i++) {
         decoded = _decodePokemonLayer(decoded);
       }
