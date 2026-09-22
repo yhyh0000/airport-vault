@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:fl_clash/common/http.dart';
 import 'package:fl_clash/common/string.dart';
+import 'package:flutter/foundation.dart';
 
 import 'airport_models.dart';
 
@@ -249,6 +250,7 @@ class AirportService {
   }
 
   Future<AirportSnapshot> _syncPokemon(AirportSession session) async {
+    _logPokemonSession(session);
     Response<dynamic>? infoResponse;
     for (final apiBase in _pokemonApiBaseUrls(session)) {
       final response = await _request(
@@ -256,6 +258,7 @@ class AirportService {
         '/user/info',
         baseUrl: apiBase,
       );
+      _logPokemonResponse('user/info', response);
       if (response.statusCode == 401 || response.statusCode == 419) {
         _throwIfAuth(response);
       }
@@ -355,6 +358,7 @@ class AirportService {
       } on AirportRequestFailed {
         continue;
       }
+      _logPokemonResponse('user/getSubscribe', response);
       if (response.statusCode == 404 || response.statusCode == 405) continue;
       if (response.statusCode == 401 || response.statusCode == 403) {
         // A theme can expose account info on one host and subscription data on
@@ -435,6 +439,41 @@ class AirportService {
         error.response?.statusMessage ?? error.message ?? '机场网页暂时无法访问',
       );
     }
+  }
+
+  void _logPokemonSession(AirportSession session) {
+    if (session.kind != AirportKind.pokemon) return;
+    final auth = session.authorizationHeader;
+    final apiBase = session.apiBaseUrl;
+    var storageKeys = <String>[];
+    try {
+      final decoded = jsonDecode(session.localStorageJson);
+      if (decoded is Map) {
+        storageKeys = decoded.keys.map((key) => key.toString()).toList()..sort();
+      }
+    } catch (_) {}
+    debugPrint(
+      '[AIRPORT][pokemon] session authPresent=${auth != null} '
+      'authLength=${auth?.length ?? 0} cookiePresent=${session.cookie.trim().isNotEmpty} '
+      'apiOverride=${apiBase != null} storageKeys=${storageKeys.join(",")}',
+    );
+  }
+
+  void _logPokemonResponse(String label, Response<dynamic> response) {
+    if (response.requestOptions.uri.host.isEmpty) return;
+    final raw = response.data;
+    final body = raw is String ? raw : '';
+    final parsed = _pokemonJsonMap(raw);
+    final topKeys = parsed?.keys.map((key) => key.toString()).toList()..sort();
+    final data = parsed == null ? null : _asMap(parsed['data']);
+    final dataKeys = data?.keys.map((key) => key.toString()).toList()..sort();
+    debugPrint(
+      '[AIRPORT][pokemon] $label status=${response.statusCode} '
+      'host=${response.requestOptions.uri.host} path=${response.requestOptions.uri.path} '
+      'bytes=${body.length} rawType=${raw.runtimeType} '
+      'jsonKeys=${topKeys?.join(",") ?? "none"} '
+      'dataKeys=${dataKeys?.join(",") ?? "none"}',
+    );
   }
 
   Future<AirportEntryProbe?> _probeEntry(
