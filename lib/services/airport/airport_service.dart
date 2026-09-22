@@ -464,9 +464,13 @@ class AirportService {
     final raw = response.data;
     final body = raw is String ? raw : '';
     final parsed = _pokemonJsonMap(raw);
-    final topKeys = parsed?.keys.map((key) => key.toString()).toList()..sort();
+    final topKeys = parsed == null
+        ? null
+        : (parsed.keys.map((key) => key.toString()).toList()..sort());
     final data = parsed == null ? null : _asMap(parsed['data']);
-    final dataKeys = data?.keys.map((key) => key.toString()).toList()..sort();
+    final dataKeys = data == null
+        ? null
+        : (data.keys.map((key) => key.toString()).toList()..sort());
     debugPrint(
       '[AIRPORT][pokemon] $label status=${response.statusCode} '
       'host=${response.requestOptions.uri.host} path=${response.requestOptions.uri.path} '
