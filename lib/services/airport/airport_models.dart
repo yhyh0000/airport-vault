@@ -135,19 +135,17 @@ class AirportSession {
     return null;
   }
 
-  /// Pokemon's web client stores the API credential as `auth_data`, while
-  /// older airport pages store a bare token.  Keep the original value when it
-  /// already contains the Bearer scheme so callers can send the same header
-  /// as the official web client.
+  /// Pokemon's web client stores the API credential as `auth_data` and sends
+  /// that value verbatim.  It may be a complete `Bearer ...` value or an
+  /// opaque gateway Authorization value, so the native client must not add a
+  /// scheme that was not present in the WebView session.
   String? get authorizationHeader {
     try {
       final decoded = jsonDecode(localStorageJson);
       if (decoded is Map) {
         final raw = decoded['auth_data']?.toString().trim();
         if (raw != null && raw.isNotEmpty) {
-          return raw.toLowerCase().startsWith('bearer ')
-              ? raw
-              : 'Bearer $raw';
+          return raw;
         }
       }
     } catch (_) {}

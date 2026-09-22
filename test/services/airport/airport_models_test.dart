@@ -41,6 +41,17 @@ void main() {
     expect(session.apiBaseUrl, 'https://api.example.test');
   });
 
+  test('Pokemon preserves an opaque auth_data Authorization value', () {
+    const session = AirportSession(
+      kind: AirportKind.pokemon,
+      baseUrl: 'https://web2.52pokemon.cc',
+      cookie: '',
+      localStorageJson: '{"auth_data":"opaque-gateway-token"}',
+    );
+
+    expect(session.authorizationHeader, 'opaque-gateway-token');
+  });
+
   test('airport account records persist independently with today check-in', () {
     final checkedAt = DateTime.now();
     const session = AirportSession(
