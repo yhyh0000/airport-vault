@@ -94,7 +94,7 @@ void main() {
           await _write(
             request,
             _pokemonEncoded('''
-              {"data":{"email":"encoded@example.com","u":1024,"d":2048,"transfer_enable":4096,"expired_at":1893456000}}
+              {"data":{"email":"encoded@example.net","u":1024,"d":2048,"transfer_enable":4096,"expired_at":1893456000}}
             '''),
             ContentType.json,
           );
@@ -293,7 +293,7 @@ void main() {
 
     final snapshot = await AirportService().sync(session);
 
-    expect(snapshot.accountLabel, 'encoded@example.com');
+    expect(snapshot.accountLabel, 'encoded@example.net');
     expect(snapshot.upload, 1024);
     expect(snapshot.download, 2048);
     expect(snapshot.total, 4096);
